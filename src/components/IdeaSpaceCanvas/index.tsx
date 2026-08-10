@@ -2,12 +2,13 @@ import Taro from '@tarojs/taro'
 import { Canvas } from '@tarojs/components'
 import { useEffect, useRef } from 'react'
 import { getIdeaTitle } from '@/utils/ideaText'
-import type { Idea, PriorityKey } from '@/types/idea'
+import type { Idea, IdeaDropTarget, PriorityKey } from '@/types/idea'
 import { useTheme } from '@/theme'
 import './index.css'
 
 const CANVAS_ID = 'idea-space-canvas'
 const NON_INBOX_PRIORITIES: PriorityKey[] = ['urgent', 'important', 'quick']
+const DRAG_HOLD_MS = 320
 
 type CanvasLike = any
 type Context2D = any
@@ -24,7 +25,7 @@ interface DockRect {
   right: number
   top: number
   bottom: number
-  priority: PriorityKey
+  target: IdeaDropTarget
 }
 
 interface Point {
@@ -46,6 +47,9 @@ interface GestureState {
   start: Point
   hitId: string | null
   pan: boolean
+  moved: boolean
+  activated: boolean
+  timer: ReturnType<typeof setTimeout> | null
   cameraStart: Point
   nodeStart?: Point
 }
@@ -55,7 +59,8 @@ interface Props {
   active: boolean
   onOpenIdea: (id: string) => void
   onAssignPriority: (id: string, priority: PriorityKey) => void
-  onDragUiChange: (active: boolean, hover: PriorityKey | null) => void
+  onArchiveIdea: (id: string) => void
+  onDragUiChange: (active: boolean, hover: IdeaDropTarget | null) => void
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -83,7 +88,7 @@ function roundedRectPath(ctx: Context2D, x: number, y: number, w: number, h: num
   ctx.closePath()
 }
 
-export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPriority, onDragUiChange }: Props) {
+export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPriority, onArchiveIdea, onDragUiChange }: Props) {
   const { theme } = useTheme()
   const canvasRef = useRef<CanvasLike>(null)
   const contextRef = useRef<Context2D>(null)
@@ -98,7 +103,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
   const dockRectsRef = useRef<DockRect[]>([])
   const rafRef = useRef<number | null>(null)
   const h5CleanupRef = useRef<(() => void) | null>(null)
-  const callbacksRef = useRef({ onOpenIdea, onAssignPriority, onDragUiChange })
+  const callbacksRef = useRef({ onOpenIdea, onAssignPriority, onArchiveIdea, onDragUiChange })
   const themeRef = useRef(theme)
 
   useEffect(() => {
@@ -115,16 +120,17 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
   }, [theme])
 
   useEffect(() => {
-    callbacksRef.current = { onOpenIdea, onAssignPriority, onDragUiChange }
-  }, [onOpenIdea, onAssignPriority, onDragUiChange])
+    callbacksRef.current = { onOpenIdea, onAssignPriority, onArchiveIdea, onDragUiChange }
+  }, [onOpenIdea, onAssignPriority, onArchiveIdea, onDragUiChange])
 
   const makeNode = (idea: Idea, index: number): NodeState => {
     const { width, height } = rectRef.current
     const angle = index * 2.399
     const radius = 45 + ((index * 43) % 130)
+    const horizontalScale = Math.max(1, Math.min(2.5, width / 430))
     return {
       id: idea.id,
-      x: width * 0.5 + Math.cos(angle) * radius * 0.85,
+      x: width * 0.5 + Math.cos(angle) * radius * 0.85 * horizontalScale,
       y: height * 0.46 + Math.sin(angle) * radius * 1.1,
       vx: (Math.random() - 0.5) * 0.09,
       vy: (Math.random() - 0.5) * 0.09,
@@ -286,6 +292,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
       console.warn('[IdeaSpaceCanvas] getContext("2d") returned null')
       return
     }
+    const previousRect = rectRef.current
     const width = Math.max(1, rect.width)
     const height = Math.max(1, rect.height)
     canvas.width = Math.round(width * dpr)
@@ -298,7 +305,9 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
     else ctx.scale(dpr, dpr)
     canvasRef.current = canvas
     contextRef.current = ctx
+    const sizeChanged = Math.abs(previousRect.width - width) > 1 || Math.abs(previousRect.height - height) > 1
     rectRef.current = { ...rect, width, height }
+    if (sizeChanged) nodesRef.current = []
     syncNodes()
     if (rafRef.current !== null) cancelFrame(rafRef.current)
     rafRef.current = requestFrame(draw)
@@ -343,10 +352,14 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
 
     const pointerDown = (event: PointerEvent) => {
       event.preventDefault()
+      canvas.setPointerCapture?.(event.pointerId)
       beginPointer(event.clientX, event.clientY)
     }
     const pointerMove = (event: PointerEvent) => movePointer(event.clientX, event.clientY)
-    const pointerUp = (event: PointerEvent) => endPointer(event.clientX, event.clientY)
+    const pointerUp = (event: PointerEvent) => {
+      endPointer(event.clientX, event.clientY)
+      canvas.releasePointerCapture?.(event.pointerId)
+    }
     const pointerCancel = () => cancelPointer()
     const onResize = () => {
       const next = host.getBoundingClientRect()
@@ -400,23 +413,51 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
   const measureDock = () => {
     const query = Taro.createSelectorQuery()
     query.selectAll('.dock-action').boundingClientRect()
+    query.select('.archive-drop-target').boundingClientRect()
     query.exec((result) => {
       const rects = (result?.[0] || []) as any[]
+      const archiveRect = result?.[1] as any
       dockRectsRef.current = rects.slice(0, 3).map((rect, index) => ({
         left: rect.left,
         right: rect.right,
         top: rect.top,
         bottom: rect.bottom,
-        priority: NON_INBOX_PRIORITIES[index]
+        target: NON_INBOX_PRIORITIES[index]
       }))
+      if (archiveRect) dockRectsRef.current.push({
+        left: archiveRect.left,
+        right: archiveRect.right,
+        top: archiveRect.top,
+        bottom: archiveRect.bottom,
+        target: 'archive'
+      })
     })
   }
 
-  const dockTarget = (clientX: number, clientY: number): PriorityKey | null => {
+  const dockTarget = (clientX: number, clientY: number): IdeaDropTarget | null => {
     const rect = dockRectsRef.current.find((item) => (
       clientX >= item.left && clientX <= item.right && clientY >= item.top && clientY <= item.bottom
     ))
-    return rect?.priority || null
+    return rect?.target || null
+  }
+
+  const clearGestureTimer = () => {
+    const gesture = gestureRef.current
+    if (gesture?.timer) clearTimeout(gesture.timer)
+    if (gesture) gesture.timer = null
+  }
+
+  const activateNodeDrag = (gesture: GestureState) => {
+    if (!gesture.hitId || gesture.moved || gesture.activated) return
+    const node = nodesRef.current.find((item) => item.id === gesture.hitId)
+    if (!node) return
+    gesture.activated = true
+    gesture.nodeStart = { x: node.x, y: node.y }
+    dragIdRef.current = node.id
+    callbacksRef.current.onDragUiChange(true, null)
+    if (process.env.TARO_ENV !== 'h5') void Taro.vibrateShort({ type: 'light' }).catch(() => undefined)
+    setTimeout(() => { if (dragIdRef.current) measureDock() }, 32)
+    setTimeout(() => { if (dragIdRef.current) measureDock() }, 220)
   }
 
   const beginPointer = (clientX: number, clientY: number) => {
@@ -424,12 +465,17 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
     const point = getLocalPoint(clientX, clientY)
     pointerRef.current = point
     const hit = hitNode(point.x, point.y)
-    gestureRef.current = {
+    const gesture: GestureState = {
       start: point,
       hitId: hit?.id || null,
       pan: false,
+      moved: false,
+      activated: false,
+      timer: null,
       cameraStart: { ...cameraRef.current }
     }
+    if (hit) gesture.timer = setTimeout(() => activateNodeDrag(gesture), DRAG_HOLD_MS)
+    gestureRef.current = gesture
   }
 
   const movePointer = (clientX: number, clientY: number) => {
@@ -444,18 +490,12 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
     const distance = Math.hypot(dx, dy)
 
     if (gesture.hitId) {
-      if (!dragIdRef.current && distance > 7) {
-        const node = nodesRef.current.find((item) => item.id === gesture.hitId)
-        if (node) {
-          dragIdRef.current = node.id
-          gesture.nodeStart = { x: node.x, y: node.y }
-          callbacksRef.current.onDragUiChange(true, null)
-          setTimeout(() => { if (dragIdRef.current) measureDock() }, 32)
-          setTimeout(() => { if (dragIdRef.current) measureDock() }, 240)
-        }
+      if (!gesture.activated && distance > 10) {
+        gesture.moved = true
+        clearGestureTimer()
       }
 
-      if (dragIdRef.current) {
+      if (gesture.activated && dragIdRef.current) {
         const node = nodesRef.current.find((item) => item.id === dragIdRef.current)
         if (node) {
           node.x = point.x - cameraRef.current.x
@@ -475,11 +515,13 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
   const endPointer = (clientX: number, clientY: number) => {
     const gesture = gestureRef.current
     if (!gesture) return
+    clearGestureTimer()
 
     if (dragIdRef.current) {
       const dragId = dragIdRef.current
       const target = dockTarget(clientX, clientY)
-      if (target) callbacksRef.current.onAssignPriority(dragId, target)
+      if (target === 'archive') callbacksRef.current.onArchiveIdea(dragId)
+      else if (target) callbacksRef.current.onAssignPriority(dragId, target)
 
       const node = nodesRef.current.find((item) => item.id === dragId)
       if (node && gesture.nodeStart) {
@@ -490,7 +532,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
       }
       dragIdRef.current = null
       callbacksRef.current.onDragUiChange(false, null)
-    } else if (gesture.hitId && !gesture.pan) {
+    } else if (gesture.hitId && !gesture.pan && !gesture.moved) {
       callbacksRef.current.onOpenIdea(gesture.hitId)
     }
 
@@ -498,6 +540,13 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
   }
 
   const cancelPointer = () => {
+    clearGestureTimer()
+    const gesture = gestureRef.current
+    const node = nodesRef.current.find((item) => item.id === dragIdRef.current)
+    if (node && gesture?.nodeStart) {
+      node.x = gesture.nodeStart.x
+      node.y = gesture.nodeStart.y
+    }
     dragIdRef.current = null
     gestureRef.current = null
     callbacksRef.current.onDragUiChange(false, null)

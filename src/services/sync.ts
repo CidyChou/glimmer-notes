@@ -1,7 +1,8 @@
 import Taro from '@tarojs/taro'
 import { loadIdeaState, saveIdeaState } from '@/services/ideaStorage'
 import { mergeSyncStates } from '@/services/syncMerge'
-import type { Idea, IdeaTombstone } from '@/types/idea'
+import { DEFAULT_PROJECT_ID, LEGACY_PROJECT_TAG_ID } from '@/types/idea'
+import type { Idea, IdeaProject, IdeaTag, IdeaTombstone } from '@/types/idea'
 
 const TOKEN_STORAGE_KEY = 'idea-space-sync-token-v1'
 const API_BASE_URL = __API_BASE_URL__.replace(/\/$/, '')
@@ -19,6 +20,8 @@ export interface SyncStatus {
 interface SyncResponse {
   schemaVersion: number
   ideas: Idea[]
+  projects?: IdeaProject[]
+  tags?: IdeaTag[]
   tombstones: IdeaTombstone[]
   serverTime: number
 }
@@ -33,7 +36,7 @@ class ApiError extends Error {
 }
 
 type StatusListener = (status: SyncStatus) => void
-type DataListener = (ideas: Idea[]) => void
+type DataListener = (ideas: Idea[], tags: IdeaTag[], projects: IdeaProject[]) => void
 
 function loadToken(): string {
   try {
@@ -91,18 +94,37 @@ async function request<T>(path: string, method: 'GET' | 'POST', data?: unknown):
 }
 
 function applyServerState(remote: SyncResponse, replaceLocal = false) {
+  const current = loadIdeaState()
+  const remoteTags = (remote.tags?.length ? remote.tags : current.tags).filter((tag) => tag.id !== LEGACY_PROJECT_TAG_ID)
+  const receivedProjects = remote.projects?.length ? remote.projects : current.projects
+  const defaultProject = current.projects.find((project) => project.id === DEFAULT_PROJECT_ID)
+  const remoteProjects = receivedProjects.some((project) => project.id === DEFAULT_PROJECT_ID) || !defaultProject
+    ? receivedProjects
+    : [defaultProject, ...receivedProjects]
+  const remoteIdeas = remote.ideas.map((idea) => {
+    const legacyTagId = (idea as Idea & { tagId?: string }).tagId
+    const project = remoteProjects.find((item) => item.id === idea.projectId) || remoteProjects.find((item) => item.id === DEFAULT_PROJECT_ID)
+    return {
+      ...idea,
+      projectId: project?.id || DEFAULT_PROJECT_ID,
+      tagIds: Array.isArray(idea.tagIds)
+        ? idea.tagIds.filter((id) => remoteTags.some((tag) => tag.id === id))
+        : legacyTagId && legacyTagId !== LEGACY_PROJECT_TAG_ID ? [legacyTagId] : [],
+      colorSlot: project?.colorSlot ?? idea.colorSlot,
+      archivedAt: typeof idea.archivedAt === 'number' ? idea.archivedAt : null
+    }
+  })
   if (replaceLocal) {
-    saveIdeaState(remote.ideas, remote.tombstones)
-    dataListeners.forEach((listener) => listener(remote.ideas))
+    saveIdeaState(remoteIdeas, remote.tombstones, remoteTags, remoteProjects)
+    dataListeners.forEach((listener) => listener(remoteIdeas, remoteTags, remoteProjects))
     return
   }
-  const current = loadIdeaState()
   const merged = mergeSyncStates(
-    { ideas: current.ideas, tombstones: current.tombstones },
-    { ideas: remote.ideas, tombstones: remote.tombstones }
+    { ideas: current.ideas, projects: current.projects, tags: current.tags, tombstones: current.tombstones },
+    { ideas: remoteIdeas, projects: remoteProjects, tags: remoteTags, tombstones: remote.tombstones }
   )
-  saveIdeaState(merged.ideas, merged.tombstones)
-  dataListeners.forEach((listener) => listener(merged.ideas))
+  saveIdeaState(merged.ideas, merged.tombstones, merged.tags, merged.projects)
+  dataListeners.forEach((listener) => listener(merged.ideas, merged.tags, merged.projects))
 }
 
 async function performSync(initial: boolean) {
@@ -113,6 +135,8 @@ async function performSync(initial: boolean) {
     if (remote.ideas.length === 0 && remote.tombstones.length === 0) {
       remote = await request<SyncResponse>('/api/sync', 'POST', {
         ideas: local.ideas,
+        projects: local.projects,
+        tags: local.tags,
         tombstones: local.tombstones
       })
     }
@@ -120,6 +144,8 @@ async function performSync(initial: boolean) {
   } else {
     remote = await request<SyncResponse>('/api/sync', 'POST', {
       ideas: local.ideas,
+      projects: local.projects,
+      tags: local.tags,
       tombstones: local.tombstones
     })
     applyServerState(remote)

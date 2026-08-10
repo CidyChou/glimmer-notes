@@ -14,16 +14,19 @@ function idea(overrides = {}) {
     createdAt: 100,
     updatedAt: 100,
     colorSlot: 0,
+    projectId: 'project-default',
+    tagIds: [],
     pinned: false,
     priority: 'inbox',
+    archivedAt: null,
     ...overrides
   }
 }
 
 test('newer records win and an equally new tombstone wins over a live idea', () => {
   const merged = mergeStates(
-    { ideas: [idea()], tombstones: [] },
-    { ideas: [idea({ text: 'New', updatedAt: 200 })], tombstones: [{ id: 'idea-1', deletedAt: 200 }] }
+    { ideas: [idea()], projects: [], tags: [], tombstones: [] },
+    { ideas: [idea({ text: 'New', updatedAt: 200 })], projects: [], tags: [], tombstones: [{ id: 'idea-1', deletedAt: 200 }] }
   )
   assert.deepEqual(merged.ideas, [])
   assert.deepEqual(merged.tombstones, [{ id: 'idea-1', deletedAt: 200 }])
@@ -31,11 +34,25 @@ test('newer records win and an equally new tombstone wins over a live idea', () 
 
 test('a newer live record can intentionally restore a deleted idea', () => {
   const merged = mergeStates(
-    { ideas: [], tombstones: [{ id: 'idea-1', deletedAt: 200 }] },
-    { ideas: [idea({ updatedAt: 201 })], tombstones: [] }
+    { ideas: [], projects: [], tags: [], tombstones: [{ id: 'idea-1', deletedAt: 200 }] },
+    { ideas: [idea({ updatedAt: 201 })], projects: [], tags: [], tombstones: [] }
   )
   assert.equal(merged.ideas[0].id, 'idea-1')
   assert.deepEqual(merged.tombstones, [])
+})
+
+test('legacy single tags migrate to a default project plus multi-tag array', () => {
+  const merged = mergeStates(
+    { ideas: [], projects: [], tags: [], tombstones: [] },
+    {
+      ideas: [idea({ projectId: undefined, tagIds: undefined, tagId: 'tag-legacy' })],
+      projects: [],
+      tags: [],
+      tombstones: []
+    }
+  )
+  assert.equal(merged.ideas[0].projectId, 'project-default')
+  assert.deepEqual(merged.ideas[0].tagIds, ['tag-legacy'])
 })
 
 test('session tokens are signed and expire', () => {
@@ -51,11 +68,11 @@ test('JSON store persists merged state across restarts', async () => {
   try {
     const first = new JsonSyncStore(file)
     await first.init()
-    await first.merge({ ideas: [idea()], tombstones: [] })
+    await first.merge({ ideas: [idea()], projects: [], tags: [], tombstones: [] })
     const second = new JsonSyncStore(file)
     await second.init()
     assert.equal(second.read().ideas[0].text, 'An idea')
-    assert.equal(JSON.parse(await readFile(file, 'utf8')).schemaVersion, 1)
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).schemaVersion, 3)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

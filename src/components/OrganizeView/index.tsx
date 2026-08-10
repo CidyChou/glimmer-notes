@@ -6,18 +6,23 @@ import { PRIORITY_META, PRIORITY_ORDER } from '@/constants/priorities'
 import PriorityTargets from '@/components/PriorityTargets'
 import { formatDay, formatTime } from '@/utils/date'
 import { getIdeaTitle, splitIdeaText } from '@/utils/ideaText'
-import type { Idea, PriorityKey } from '@/types/idea'
+import type { Idea, IdeaDropTarget, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
+import { findIdeaProject, findIdeaTags } from '@/utils/tags'
 import { useTheme } from '@/theme'
 import type { IdeaColorSlot } from '@/theme'
 import './index.css'
 
 interface Props {
   ideas: Idea[]
-  query: string
+  projects: IdeaProject[]
+  tags: IdeaTag[]
   current: number
   onCurrentChange: (index: number) => void
   onOpenIdea: (id: string) => void
   onAssignPriority: (id: string, priority: PriorityKey) => void
+  onArchiveIdea: (id: string) => void
+  onCopyIdea: (idea: Idea) => void
+  onDragUiChange: (active: boolean, hover: IdeaDropTarget | null) => void
 }
 
 type GestureSource = 'row' | 'handle'
@@ -31,7 +36,7 @@ interface SortUi {
   sourcePriority: PriorityKey | null
   x: number
   y: number
-  hover: PriorityKey | null
+  hover: IdeaDropTarget | null
 }
 
 interface GestureState {
@@ -41,6 +46,8 @@ interface GestureState {
   startY: number
   activated: boolean
   moved: boolean
+  latestX: number
+  latestY: number
   timer: ReturnType<typeof setTimeout> | null
 }
 
@@ -49,7 +56,7 @@ interface DropRect {
   right: number
   top: number
   bottom: number
-  priority: PriorityKey
+  target: IdeaDropTarget
 }
 
 const EMPTY_SORT_UI: SortUi = {
@@ -63,11 +70,9 @@ const EMPTY_SORT_UI: SortUi = {
   hover: null
 }
 
-function bucketIdeas(ideas: Idea[], query: string, priority: PriorityKey) {
-  const keyword = query.trim().toLowerCase()
+function bucketIdeas(ideas: Idea[], priority: PriorityKey) {
   return ideas
     .filter((idea) => idea.priority === priority)
-    .filter((idea) => !keyword || idea.text.toLowerCase().includes(keyword))
     .sort((a, b) => b.createdAt - a.createdAt)
 }
 
@@ -83,6 +88,8 @@ function eventPoint(event: any, changed = false) {
 
 interface TimelineProps {
   ideas: Idea[]
+  projects: IdeaProject[]
+  tags: IdeaTag[]
   priority: PriorityKey
   sortUi: SortUi
   onOpenIdea: (id: string) => void
@@ -92,10 +99,13 @@ interface TimelineProps {
   onGestureCancel: () => void
   onSuppressClick: (id: string) => boolean
   onHandleClick: (idea: Idea) => void
+  onCopyIdea: (idea: Idea) => void
 }
 
 function Timeline({
   ideas,
+  projects,
+  tags,
   priority,
   sortUi,
   onOpenIdea,
@@ -104,7 +114,8 @@ function Timeline({
   onGestureEnd,
   onGestureCancel,
   onSuppressClick,
-  onHandleClick
+  onHandleClick,
+  onCopyIdea
 }: TimelineProps) {
   const { theme } = useTheme()
   if (ideas.length === 0) {
@@ -129,33 +140,71 @@ function Timeline({
         const day = formatDay(idea.createdAt)
         const showDay = day !== previousDay
         const isSource = sortUi.ideaId === idea.id
+        const project = findIdeaProject(idea, projects)
+        const ideaTags = findIdeaTags(idea, tags)
         previousDay = day
         return (
           <View key={idea.id}>
             {showDay && <View className='day-label'>{day}</View>}
             <View
               className={`idea-row ${isSource ? 'sort-source' : ''}`}
-              style={{ '--row-color': theme.ideaPalette[idea.colorSlot] } as CSSProperties}
+              style={{ '--row-color': theme.ideaPalette[project.colorSlot] } as CSSProperties}
               ariaRole='button'
               ariaLabel={`编辑任务：${title}`}
               onClick={() => {
                 if (onSuppressClick(idea.id) || sortUi.active) return
                 onOpenIdea(idea.id)
               }}
-              onTouchStart={(event) => onGestureStart(event, idea, 'row')}
-              onTouchMove={onGestureMove}
-              onTouchEnd={onGestureEnd}
-              onTouchCancel={onGestureCancel}
+              onTouchStart={(event) => {
+                event.stopPropagation()
+                onGestureStart(event, idea, 'row')
+              }}
+              onTouchMove={(event) => {
+                event.stopPropagation()
+                onGestureMove(event)
+              }}
+              onTouchEnd={(event) => {
+                event.stopPropagation()
+                onGestureEnd(event)
+              }}
+              onTouchCancel={(event) => {
+                event.stopPropagation()
+                onGestureCancel()
+              }}
             >
               <View className='idea-row-main'>
                 <View className='idea-row-copy'>
                   <Text className='idea-row-text'>{title}</Text>
                   {!!details && <Text className='idea-row-details'>{details}</Text>}
+                  <View className='idea-row-taxonomy'>
+                    <View className='idea-row-project' style={{ '--tag-color': theme.ideaPalette[project.colorSlot] } as CSSProperties}>
+                      <View className='idea-row-project-dot' />
+                      <Text>{project.name}</Text>
+                    </View>
+                    {ideaTags.slice(0, 2).map((tag) => (
+                      <View key={tag.id} className='idea-row-tag' style={{ '--tag-color': theme.ideaPalette[tag.colorSlot] } as CSSProperties}>
+                        <Text>#{tag.name}</Text>
+                      </View>
+                    ))}
+                    {ideaTags.length > 2 && <Text className='idea-row-tag-more'>+{ideaTags.length - 2}</Text>}
+                  </View>
                 </View>
 
                 <View className='idea-row-meta'>
                   <Text className='idea-row-time'>{formatTime(idea.createdAt)}</Text>
                   <Text className='idea-row-status'>{idea.pinned ? '★ ' : ''}{PRIORITY_META[priority].sub}</Text>
+                </View>
+
+                <View
+                  className='copy-row-btn'
+                  ariaRole='button'
+                  ariaLabel={`复制任务：${title}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onCopyIdea(idea)
+                  }}
+                >
+                  <View className='copy-glyph' />
                 </View>
 
                 <View
@@ -196,7 +245,7 @@ function Timeline({
   )
 }
 
-export default function OrganizeView({ ideas, query, current, onCurrentChange, onOpenIdea, onAssignPriority }: Props) {
+export default function OrganizeView({ ideas, projects, tags, current, onCurrentChange, onOpenIdea, onAssignPriority, onArchiveIdea, onCopyIdea, onDragUiChange }: Props) {
   const { theme } = useTheme()
   const key = PRIORITY_ORDER[current]
   const meta = PRIORITY_META[key]
@@ -207,9 +256,9 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
   const [sortUi, setSortUi] = useState<SortUi>(EMPTY_SORT_UI)
 
   const counts = useMemo(() => PRIORITY_ORDER.reduce((result, priority) => {
-    result[priority] = bucketIdeas(ideas, query, priority).length
+    result[priority] = bucketIdeas(ideas, priority).length
     return result
-  }, {} as Record<PriorityKey, number>), [ideas, query])
+  }, {} as Record<PriorityKey, number>), [ideas])
 
   const availableTargets = useMemo(
     () => PRIORITY_ORDER.filter((priority) => priority !== sortUi.sourcePriority),
@@ -228,12 +277,14 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
     clearGestureTimer()
     gestureRef.current = null
     targetRectsRef.current = []
+    onDragUiChange(false, null)
     setSortUi((state) => ({ ...state, active: false, hover: null }))
   }
 
   const measureTargets = () => {
     const queryApi = Taro.createSelectorQuery()
     queryApi.selectAll('.organize-drop-target').boundingClientRect()
+    queryApi.select('.archive-drop-target').boundingClientRect()
     queryApi.exec((result) => {
       const rects = (result?.[0] || []) as any[]
       targetRectsRef.current = rects.map((rect, index) => ({
@@ -241,15 +292,27 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
         right: rect.right,
         top: rect.top,
         bottom: rect.bottom,
-        priority: availableTargets[index]
-      })).filter((rect) => !!rect.priority)
+        target: availableTargets[index]
+      })).filter((rect) => !!rect.target)
+      const archiveRect = result?.[1] as any
+      if (archiveRect) targetRectsRef.current.push({
+        left: archiveRect.left,
+        right: archiveRect.right,
+        top: archiveRect.top,
+        bottom: archiveRect.bottom,
+        target: 'archive'
+      })
     })
   }
 
   useEffect(() => {
     if (!sortUi.active) return undefined
-    const timer = setTimeout(measureTargets, 32)
-    return () => clearTimeout(timer)
+    const fastTimer = setTimeout(measureTargets, 32)
+    const settledTimer = setTimeout(measureTargets, 220)
+    return () => {
+      clearTimeout(fastTimer)
+      clearTimeout(settledTimer)
+    }
     // availableTargets is derived from sourcePriority and stable for a gesture.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortUi.active, sortUi.sourcePriority])
@@ -260,7 +323,7 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
     const target = targetRectsRef.current.find((rect) => (
       x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
     ))
-    return target?.priority || null
+    return target?.target || null
   }
 
   const activateDrag = (gesture: GestureState, x: number, y: number) => {
@@ -278,6 +341,8 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
       y,
       hover: null
     })
+    onDragUiChange(true, null)
+    if (process.env.TARO_ENV !== 'h5') void Taro.vibrateShort({ type: 'light' }).catch(() => undefined)
   }
 
   const openPicker = (idea: Idea) => {
@@ -305,37 +370,42 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
       startY: point.y,
       activated: false,
       moved: false,
+      latestX: point.x,
+      latestY: point.y,
       timer: null
     }
     gestureRef.current = gesture
 
-    if (source === 'row') {
-      gesture.timer = setTimeout(() => activateDrag(gesture, point.x, point.y), 340)
-    }
+    gesture.timer = setTimeout(
+      () => activateDrag(gesture, gesture.latestX, gesture.latestY),
+      source === 'row' ? 520 : 300
+    )
   }
 
   const moveGesture = (event: any) => {
     const gesture = gestureRef.current
     const point = eventPoint(event)
     if (!gesture || !point) return
+    gesture.latestX = point.x
+    gesture.latestY = point.y
     const distance = Math.hypot(point.x - gesture.startX, point.y - gesture.startY)
 
-    if (!gesture.activated && gesture.source === 'handle' && distance > 5) {
+    if (!gesture.activated && distance > 10) {
       gesture.moved = true
-      activateDrag(gesture, point.x, point.y)
-    } else if (!gesture.activated && gesture.source === 'row' && distance > 9) {
-      gesture.moved = true
+      suppressClickRef.current = gesture.idea.id
       clearGestureTimer()
     }
 
     if (!gesture.activated) return
     gesture.moved = true
+    const hover = targetAt(point.x, point.y)
     setSortUi((state) => ({
       ...state,
       x: point.x,
       y: point.y,
-      hover: targetAt(point.x, point.y)
+      hover
     }))
+    onDragUiChange(true, hover)
   }
 
   const endGesture = (event: any) => {
@@ -351,7 +421,8 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
 
     if (gesture.activated) {
       const target = targetAt(point.x, point.y)
-      if (target) onAssignPriority(gesture.idea.id, target)
+      if (target === 'archive') onArchiveIdea(gesture.idea.id)
+      else if (target) onAssignPriority(gesture.idea.id, target)
       closeSortUi()
       return
     }
@@ -392,7 +463,7 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
   return (
     <View className={`organize-shell ${sortUi.active ? 'sorting' : ''}`}>
       <View className='organize-head'>
-        <Text className='organize-subtitle'>长按卡片或拖动六点标识，快速归类</Text>
+        <Text className='organize-subtitle'>按住卡片半秒后拖动，六点标识按住即可移动</Text>
         <Text className='organize-total'>{ideas.length}</Text>
       </View>
 
@@ -436,12 +507,14 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
         onChange={(event) => onCurrentChange(event.detail.current)}
       >
         {PRIORITY_ORDER.map((priority) => {
-          const list = bucketIdeas(ideas, query, priority)
+          const list = bucketIdeas(ideas, priority)
           return (
             <SwiperItem key={priority} className='bucket-swiper-item'>
               <ScrollView className='bucket-page' scrollY={!sortUi.active} enhanced showScrollbar={false}>
                 <Timeline
                   ideas={list}
+                  projects={projects}
+                  tags={tags}
                   priority={priority}
                   sortUi={sortUi}
                   onOpenIdea={onOpenIdea}
@@ -451,6 +524,7 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
                   onGestureCancel={cancelGesture}
                   onSuppressClick={suppressRowClick}
                   onHandleClick={handleHandleClick}
+                  onCopyIdea={onCopyIdea}
                 />
               </ScrollView>
             </SwiperItem>
@@ -463,12 +537,12 @@ export default function OrganizeView({ ideas, query, current, onCurrentChange, o
         <View className='sort-targets'>
           <Text className='sort-title'>
             {sortUi.hover
-              ? `放入「${PRIORITY_META[sortUi.hover].name}」`
+              ? sortUi.hover === 'archive' ? '松手归档任务' : `放入「${PRIORITY_META[sortUi.hover].name}」`
               : sortUi.mode === 'choosing' ? '选择一个收纳圈' : '拖进收纳圈后松手'}
           </Text>
           <PriorityTargets
             priorities={availableTargets}
-            hover={sortUi.hover}
+            hover={sortUi.hover === 'archive' ? null : sortUi.hover}
             targetClassName='organize-drop-target'
             onSelect={moveFromPicker}
           />

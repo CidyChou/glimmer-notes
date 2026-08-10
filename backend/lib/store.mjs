@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { validateStoredState, validateSyncPayload } from './schema.mjs'
 
-export const EMPTY_STATE = Object.freeze({ schemaVersion: 1, ideas: [], tombstones: [] })
+export const EMPTY_STATE = Object.freeze({ schemaVersion: 3, ideas: [], projects: [], tags: [], tombstones: [] })
 
 function chooseNewest(records, timestampField) {
   const result = new Map()
@@ -19,6 +19,8 @@ export function mergeStates(serverState, clientState) {
   const server = validateSyncPayload(serverState)
   const client = validateSyncPayload(clientState)
   const ideas = chooseNewest([...server.ideas, ...client.ideas], 'updatedAt')
+  const projects = chooseNewest([...(server.projects || []), ...(client.projects || [])], 'updatedAt')
+  const tags = chooseNewest([...(server.tags || []), ...(client.tags || [])], 'updatedAt')
   const tombstones = chooseNewest([...server.tombstones, ...client.tombstones], 'deletedAt')
   const ids = new Set([...ideas.keys(), ...tombstones.keys()])
   const mergedIdeas = []
@@ -36,13 +38,13 @@ export function mergeStates(serverState, clientState) {
 
   mergedIdeas.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id))
   mergedTombstones.sort((left, right) => right.deletedAt - left.deletedAt || left.id.localeCompare(right.id))
-  return { schemaVersion: 1, ideas: mergedIdeas, tombstones: mergedTombstones }
+  return { schemaVersion: 3, ideas: mergedIdeas, projects: [...projects.values()], tags: [...tags.values()], tombstones: mergedTombstones }
 }
 
 export class JsonSyncStore {
   constructor(filePath) {
     this.filePath = filePath
-    this.state = { ...EMPTY_STATE, ideas: [], tombstones: [] }
+    this.state = { ...EMPTY_STATE, ideas: [], projects: [], tags: [], tombstones: [] }
     this.writeQueue = Promise.resolve()
   }
 

@@ -1,0 +1,11 @@
+.theme-root {
+  --control-height-md: 48px;
+  --control-radius-md: 14px;
+  --control-padding-inline: 14px;
+  --control-gap: 8px;
+  --control-font-size: 16px;
+  --control-action-font-size: 13px;
+  --control-action-weight: 800;
+  --control-focus-ring: 0 0 0 3px rgba(var(--accent-rgb), .07);
+  --motion-press-duration: .14s;
+}

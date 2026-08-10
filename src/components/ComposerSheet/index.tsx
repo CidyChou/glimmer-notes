@@ -1,16 +1,26 @@
-import { Button, Input, Text, Textarea, View } from '@tarojs/components'
+import { Button, Input, ScrollView, Text, Textarea, View } from '@tarojs/components'
+import type { CSSProperties } from 'react'
+import type { IdeaProject, IdeaTag } from '@/types/idea'
+import { useTheme } from '@/theme'
 import './index.css'
 
 interface Props {
   open: boolean
   title: string
   details: string
+  projects: IdeaProject[]
+  tags: IdeaTag[]
+  selectedProjectId: string
+  selectedTagIds: string[]
   onTitleChange: (value: string) => void
   onDetailsChange: (value: string) => void
+  onProjectChange: (projectId: string) => void
+  onTagToggle: (tagId: string) => void
   onSave: () => void
 }
 
-export default function ComposerSheet({ open, title, details, onTitleChange, onDetailsChange, onSave }: Props) {
+export default function ComposerSheet({ open, title, details, projects, tags, selectedProjectId, selectedTagIds, onTitleChange, onDetailsChange, onProjectChange, onTagToggle, onSave }: Props) {
+  const { theme } = useTheme()
   const hasTitle = !!title.trim()
 
   return (
@@ -62,6 +72,60 @@ export default function ComposerSheet({ open, title, details, onTitleChange, onD
         <View className='input-meta'>
           <Text>整理页显示一行详情</Text>
           <Text className={`input-count ${details.length ? 'has-value' : ''}`}>{details.length} 字详情</Text>
+        </View>
+      </View>
+
+      <View className='composer-taxonomy'>
+        <View className='composer-taxonomy-group'>
+          <View className='composer-taxonomy-heading'>
+            <Text className='composer-tags-label'>所属项目</Text>
+            <Text className='composer-taxonomy-hint'>单选</Text>
+          </View>
+          <ScrollView className='composer-tag-scroll' scrollX enhanced showScrollbar={false}>
+            <View className='composer-tag-list'>
+              {projects.map((project) => (
+                <View
+                  key={project.id}
+                  className={`composer-tag project ${selectedProjectId === project.id ? 'active' : ''}`}
+                  style={{ '--tag-color': theme.ideaPalette[project.colorSlot] } as CSSProperties}
+                  ariaRole='button'
+                  ariaLabel={`选择所属项目${project.name}`}
+                  onClick={() => onProjectChange(project.id)}
+                >
+                  <View className='composer-tag-radio'><View /></View>
+                  <Text>{project.name}</Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        <View className='composer-taxonomy-group'>
+          <View className='composer-taxonomy-heading'>
+            <Text className='composer-tags-label'>任务标签</Text>
+            <Text className='composer-taxonomy-hint'>可多选</Text>
+          </View>
+          {tags.length ? (
+            <ScrollView className='composer-tag-scroll' scrollX enhanced showScrollbar={false}>
+              <View className='composer-tag-list'>
+                {tags.map((tag) => (
+                  <View
+                    key={tag.id}
+                    className={`composer-tag ${selectedTagIds.includes(tag.id) ? 'active' : ''}`}
+                    style={{ '--tag-color': theme.ideaPalette[tag.colorSlot] } as CSSProperties}
+                    ariaRole='button'
+                    ariaLabel={`${selectedTagIds.includes(tag.id) ? '移除' : '添加'}${tag.name}标签`}
+                    onClick={() => onTagToggle(tag.id)}
+                  >
+                    <View className='composer-tag-dot' />
+                    <Text>{tag.name}</Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          ) : (
+            <Text className='composer-tags-empty'>可在设置中新增标签</Text>
+          )}
         </View>
       </View>
 

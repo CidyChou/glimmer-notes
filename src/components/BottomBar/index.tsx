@@ -1,6 +1,6 @@
 import { Button, Text, View } from '@tarojs/components'
 import PriorityTargets from '@/components/PriorityTargets'
-import type { PriorityKey } from '@/types/idea'
+import type { IdeaDropTarget, PriorityKey } from '@/types/idea'
 import './index.css'
 
 const SPACE_TARGETS: PriorityKey[] = ['urgent', 'important', 'quick']
@@ -10,7 +10,7 @@ interface Props {
   todayCount: number
   inboxCount: number
   dragging: boolean
-  hover: PriorityKey | null
+  hover: IdeaDropTarget | null
   onAdd: () => void
   onModeChange: (mode: 'space' | 'organize') => void
 }
@@ -34,7 +34,7 @@ export default function BottomBar({ mode, todayCount, inboxCount, dragging, hove
             <Text className='dock-heading'>拖进收纳圈后松手，圈外保持原位</Text>
             <PriorityTargets
               priorities={SPACE_TARGETS}
-              hover={hover}
+              hover={hover === 'archive' ? null : hover}
               targetClassName='dock-action'
             />
           </View>
@@ -56,9 +56,18 @@ export default function BottomBar({ mode, todayCount, inboxCount, dragging, hove
           <Text className='nav-label'>空间</Text>
         </Button>
 
-        <View className='add-well'>
-          <Button className='add-btn' ariaLabel='添加想法' onClick={onAdd}>
-            <View className='add-glyph' />
+        <View className={`add-well ${dragging ? 'archive-mode' : ''}`}>
+          <Button
+            className={`add-btn ${dragging ? 'archive-drop-target' : ''} ${hover === 'archive' ? 'archive-hover' : ''}`}
+            ariaLabel={dragging ? '拖到这里归档任务' : '添加想法'}
+            onClick={() => !dragging && onAdd()}
+          >
+            {dragging ? (
+              <View className='archive-button-content'>
+                <View className='archive-glyph' />
+                <Text className='archive-label'>归档</Text>
+              </View>
+            ) : <View className='add-glyph' />}
           </Button>
         </View>
 

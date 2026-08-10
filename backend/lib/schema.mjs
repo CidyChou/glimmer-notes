@@ -34,14 +34,56 @@ export function validateIdea(value) {
   if (!PRIORITIES.has(value.priority)) {
     throw new ValidationError('idea.priority is invalid')
   }
+  const legacyTagId = typeof value.tagId === 'string' && value.tagId.trim() && value.tagId !== 'tag-project'
+    ? value.tagId.slice(0, 128)
+    : null
+  const tagIds = Array.isArray(value.tagIds)
+    ? [...new Set(value.tagIds.map((id) => requiredString(id, 'idea.tagIds[]', 128)))].slice(0, 50)
+    : legacyTagId ? [legacyTagId] : []
   return {
     id: requiredString(value.id, 'idea.id', 128),
     text: requiredString(value.text, 'idea.text', 10_000),
     createdAt: timestamp(value.createdAt, 'idea.createdAt'),
     updatedAt: timestamp(value.updatedAt, 'idea.updatedAt'),
     colorSlot: value.colorSlot,
+    projectId: typeof value.projectId === 'string' && value.projectId.trim() ? value.projectId.slice(0, 128) : 'project-default',
+    tagIds,
     pinned: value.pinned,
-    priority: value.priority
+    priority: value.priority,
+    archivedAt: value.archivedAt == null ? null : timestamp(value.archivedAt, 'idea.archivedAt')
+  }
+}
+
+export function validateTag(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new ValidationError('tag must be an object')
+  }
+  if (!Number.isInteger(value.colorSlot) || value.colorSlot < 0 || value.colorSlot > 6) {
+    throw new ValidationError('tag.colorSlot must be an integer from 0 to 6')
+  }
+  return {
+    id: requiredString(value.id, 'tag.id', 128),
+    name: requiredString(value.name, 'tag.name', 12),
+    colorSlot: value.colorSlot,
+    createdAt: timestamp(value.createdAt, 'tag.createdAt'),
+    updatedAt: timestamp(value.updatedAt, 'tag.updatedAt')
+  }
+}
+
+export function validateProject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new ValidationError('project must be an object')
+  }
+  if (!Number.isInteger(value.colorSlot) || value.colorSlot < 0 || value.colorSlot > 6) {
+    throw new ValidationError('project.colorSlot must be an integer from 0 to 6')
+  }
+  return {
+    id: requiredString(value.id, 'project.id', 128),
+    name: requiredString(value.name, 'project.name', 16),
+    colorSlot: value.colorSlot,
+    createdAt: timestamp(value.createdAt, 'project.createdAt'),
+    updatedAt: timestamp(value.updatedAt, 'project.updatedAt'),
+    isDefault: Boolean(value.isDefault)
   }
 }
 
@@ -67,14 +109,16 @@ export function validateSyncPayload(value) {
   }
   return {
     ideas: value.ideas.map(validateIdea),
+    projects: Array.isArray(value.projects) ? value.projects.map(validateProject) : [],
+    tags: Array.isArray(value.tags) ? value.tags.map(validateTag) : [],
     tombstones: value.tombstones.map(validateTombstone)
   }
 }
 
 export function validateStoredState(value) {
-  if (!value || value.schemaVersion !== 1) {
+  if (!value || ![1, 2, 3].includes(value.schemaVersion)) {
     throw new ValidationError('unsupported store schema')
   }
   const payload = validateSyncPayload(value)
-  return { schemaVersion: 1, ...payload }
+  return { schemaVersion: 3, ...payload }
 }

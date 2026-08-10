@@ -1,24 +1,30 @@
-import { Button, Input, Text, Textarea, View } from '@tarojs/components'
+import { Button, Input, ScrollView, Text, Textarea, View } from '@tarojs/components'
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { PRIORITY_META, PRIORITY_ORDER } from '@/constants/priorities'
 import { formatDetailTime } from '@/utils/date'
 import { composeIdeaText, splitIdeaText } from '@/utils/ideaText'
-import type { Idea, PriorityKey } from '@/types/idea'
+import type { Idea, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
 import { useTheme } from '@/theme'
 import './index.css'
 
 interface Props {
   idea: Idea
+  projects: IdeaProject[]
+  tags: IdeaTag[]
   open: boolean
   onClose: () => void
   onPriorityChange: (priority: PriorityKey) => void
+  onProjectChange: (projectId: string) => void
+  onTagToggle: (tagId: string) => void
   onSave: (title: string, details: string) => void
   onTogglePin: () => void
+  onCopy: () => void
+  onArchive: () => void
   onDelete: () => void
 }
 
-export default function DetailSheet({ idea, open, onClose, onPriorityChange, onSave, onTogglePin, onDelete }: Props) {
+export default function DetailSheet({ idea, projects, tags, open, onClose, onPriorityChange, onProjectChange, onTagToggle, onSave, onTogglePin, onCopy, onArchive, onDelete }: Props) {
   const { theme } = useTheme()
   const originalContent = splitIdeaText(idea.text)
   const [title, setTitle] = useState(originalContent.title)
@@ -92,8 +98,52 @@ export default function DetailSheet({ idea, open, onClose, onPriorityChange, onS
           </View>
         ))}
       </View>
+      <View className='detail-taxonomy-title'>
+        <Text className='priority-picker-title tag-picker-title'>所属项目</Text>
+        <Text className='detail-taxonomy-hint'>单选</Text>
+      </View>
+      <ScrollView className='detail-tag-scroll' scrollX enhanced showScrollbar={false}>
+        <View className='detail-tag-list'>
+          {projects.map((project) => (
+            <View
+              key={project.id}
+              className={`detail-tag project ${idea.projectId === project.id ? 'active' : ''}`}
+              ariaRole='button'
+              ariaLabel={`选择所属项目${project.name}`}
+              style={{ '--tag-color': theme.ideaPalette[project.colorSlot] } as CSSProperties}
+              onClick={() => onProjectChange(project.id)}
+            >
+              <View className='detail-tag-radio'><View /></View>
+              <Text>{project.name}</Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+      <View className='detail-taxonomy-title'>
+        <Text className='priority-picker-title tag-picker-title'>任务标签</Text>
+        <Text className='detail-taxonomy-hint'>可多选</Text>
+      </View>
+      <ScrollView className='detail-tag-scroll' scrollX enhanced showScrollbar={false}>
+        <View className='detail-tag-list'>
+          {tags.map((tag) => (
+            <View
+              key={tag.id}
+              className={`detail-tag ${idea.tagIds.includes(tag.id) ? 'active' : ''}`}
+              ariaRole='button'
+              ariaLabel={`${idea.tagIds.includes(tag.id) ? '移除' : '添加'}${tag.name}标签`}
+              style={{ '--tag-color': theme.ideaPalette[tag.colorSlot] } as CSSProperties}
+              onClick={() => onTagToggle(tag.id)}
+            >
+              <View className='detail-tag-dot' />
+              <Text>{tag.name}</Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
       <View className='detail-actions'>
         <Button onClick={onTogglePin}>{idea.pinned ? '★ 取消收藏' : '☆ 收藏'}</Button>
+        <Button className='copy-action' onClick={onCopy}>复制</Button>
+        <Button className='archive-action' onClick={onArchive}>归档</Button>
         <Button className='danger' onClick={onDelete}>删除</Button>
       </View>
     </View>

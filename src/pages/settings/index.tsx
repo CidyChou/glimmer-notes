@@ -1,4 +1,4 @@
-import Taro from '@tarojs/taro'
+import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Input, Text, View } from '@tarojs/components'
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
@@ -9,8 +9,12 @@ import {
   retrySync,
   subscribeSyncStatus
 } from '@/services/sync'
+import { loadIdeaState, loadProjects, loadTags, saveProjects, saveTags } from '@/services/ideaStorage'
+import { scheduleSync } from '@/services/sync'
+import { createId } from '@/utils/id'
 import { THEME_OPTIONS, useTheme } from '@/theme'
-import type { ThemeDefinition } from '@/theme'
+import type { IdeaColorSlot, ThemeDefinition } from '@/theme'
+import type { IdeaProject, IdeaTag } from '@/types/idea'
 import './index.css'
 
 function previewStyle(option: ThemeDefinition): CSSProperties {
@@ -28,7 +32,7 @@ function previewStyle(option: ThemeDefinition): CSSProperties {
 }
 
 export default function SettingsPage() {
-  const { themeId, themeStyle, setTheme } = useTheme()
+  const { themeId, theme, themeStyle, setTheme } = useTheme()
   const [notice, setNotice] = useState('')
   const [syncStatus, setSyncStatus] = useState(getSyncStatus)
   const [loginOpen, setLoginOpen] = useState(false)
@@ -36,6 +40,19 @@ export default function SettingsPage() {
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [loginError, setLoginError] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
+  const [projects, setProjects] = useState<IdeaProject[]>(loadProjects)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [newProjectColor, setNewProjectColor] = useState<IdeaColorSlot>(1)
+  const [tags, setTags] = useState<IdeaTag[]>(loadTags)
+  const [newTagName, setNewTagName] = useState('')
+  const [newTagColor, setNewTagColor] = useState<IdeaColorSlot>(0)
+  const [archivedCount, setArchivedCount] = useState(() => loadIdeaState().ideas.filter((idea) => idea.archivedAt !== null).length)
+
+  useDidShow(() => {
+    setProjects(loadProjects())
+    setTags(loadTags())
+    setArchivedCount(loadIdeaState().ideas.filter((idea) => idea.archivedAt !== null).length)
+  })
 
   useEffect(() => subscribeSyncStatus(setSyncStatus), [])
 
@@ -103,6 +120,61 @@ export default function SettingsPage() {
     logoutSync()
     setNotice('已退出云端同步，本地数据保留')
     setTimeout(() => setNotice(''), 1800)
+  }
+
+  const addTag = () => {
+    const name = newTagName.trim()
+    if (!name) return
+    if (tags.some((tag) => tag.name.toLowerCase() === name.toLowerCase())) {
+      setNotice('已经有同名标签了')
+      setTimeout(() => setNotice(''), 1500)
+      return
+    }
+    const now = Date.now()
+    const tag: IdeaTag = {
+      id: createId(),
+      name: name.slice(0, 12),
+      colorSlot: newTagColor,
+      createdAt: now,
+      updatedAt: now
+    }
+    const next = [...tags, tag]
+    setTags(next)
+    saveTags(next)
+    scheduleSync()
+    Taro.eventCenter.trigger('idea-taxonomy-updated')
+    setNewTagName('')
+    setNewTagColor(((newTagColor + 1) % 7) as IdeaColorSlot)
+    setNotice(`已添加「${tag.name}」`)
+    setTimeout(() => setNotice(''), 1500)
+  }
+
+  const addProject = () => {
+    const name = newProjectName.trim()
+    if (!name) return
+    if (projects.some((project) => project.name.toLowerCase() === name.toLowerCase())) {
+      setNotice('已经有同名项目了')
+      setTimeout(() => setNotice(''), 1500)
+      return
+    }
+    const now = Date.now()
+    const project: IdeaProject = {
+      id: createId(),
+      name: name.slice(0, 16),
+      colorSlot: newProjectColor,
+      createdAt: now,
+      updatedAt: now,
+      isDefault: false
+    }
+    const next = [...projects, project]
+    setProjects(next)
+    saveProjects(next)
+    scheduleSync()
+    Taro.eventCenter.trigger('idea-taxonomy-updated')
+    setNewProjectName('')
+    setNewProjectColor(((newProjectColor + 1) % 7) as IdeaColorSlot)
+    setNotice(`已添加项目「${project.name}」`)
+    setTimeout(() => setNotice(''), 1500)
   }
 
   return (
@@ -178,6 +250,117 @@ export default function SettingsPage() {
           </View>
 
           <View className='settings-section'>
+            <View className='section-heading'>
+              <Text className='section-title'>项目</Text>
+              <Text className='section-copy'>每个任务只能属于一个项目，任务主色跟随项目</Text>
+            </View>
+            <View className='tag-manager project-manager'>
+              <View className='tag-list'>
+                {projects.map((project) => (
+                  <View
+                    key={project.id}
+                    className='managed-tag'
+                    style={{ '--tag-color': theme.ideaPalette[project.colorSlot] } as CSSProperties}
+                  >
+                    <View className='managed-project-radio'><View /></View>
+                    <Text className='managed-tag-name'>{project.name}</Text>
+                    {project.isDefault && <Text className='managed-tag-default'>默认选项</Text>}
+                  </View>
+                ))}
+              </View>
+
+              <View className='tag-create'>
+                <Text className='tag-create-label'>新增项目</Text>
+                <View className='tag-create-row'>
+                  <Input
+                    className='tag-name-input'
+                    value={newProjectName}
+                    maxlength={16}
+                    ariaLabel='项目名称'
+                    placeholder='例如：拾光笔记、游戏官网'
+                    placeholderClass='tag-input-placeholder'
+                    confirmType='done'
+                    onInput={(event) => setNewProjectName(event.detail.value)}
+                    onConfirm={addProject}
+                  />
+                  <Button
+                    className='tag-add-button'
+                    disabled={newProjectName.trim() ? undefined : true}
+                    onClick={addProject}
+                  >新增</Button>
+                </View>
+                <View className='tag-color-list'>
+                  {theme.ideaPalette.map((_, index) => (
+                    <View
+                      key={index}
+                      className={`tag-color ${newProjectColor === index ? 'active' : ''}`}
+                      style={{ '--tag-color': theme.ideaPalette[index] } as CSSProperties}
+                      ariaRole='button'
+                      ariaLabel={`选择项目颜色 ${index + 1}`}
+                      onClick={() => setNewProjectColor(index as IdeaColorSlot)}
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View className='settings-section'>
+            <View className='section-heading'>
+              <Text className='section-title'>标签</Text>
+              <Text className='section-copy'>一个任务可以添加多个标签，并可通过标签名搜索</Text>
+            </View>
+            <View className='tag-manager'>
+              <View className='tag-list'>
+                {tags.map((tag) => (
+                  <View
+                    key={tag.id}
+                    className='managed-tag'
+                    style={{ '--tag-color': theme.ideaPalette[tag.colorSlot] } as CSSProperties}
+                  >
+                    <View className='managed-tag-dot' />
+                    <Text className='managed-tag-name'>{tag.name}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <View className='tag-create'>
+                <Text className='tag-create-label'>新增自定义标签</Text>
+                <View className='tag-create-row'>
+                  <Input
+                    className='tag-name-input'
+                    value={newTagName}
+                    maxlength={12}
+                    ariaLabel='自定义标签名称'
+                    placeholder='例如：工作、产品、生活'
+                    placeholderClass='tag-input-placeholder'
+                    confirmType='done'
+                    onInput={(event) => setNewTagName(event.detail.value)}
+                    onConfirm={addTag}
+                  />
+                  <Button
+                    className='tag-add-button'
+                    disabled={newTagName.trim() ? undefined : true}
+                    onClick={addTag}
+                  >新增</Button>
+                </View>
+                <View className='tag-color-list'>
+                  {theme.ideaPalette.map((_, index) => (
+                    <View
+                      key={index}
+                      className={`tag-color ${newTagColor === index ? 'active' : ''}`}
+                      style={{ '--tag-color': theme.ideaPalette[index] } as CSSProperties}
+                      ariaRole='button'
+                      ariaLabel={`选择标签颜色 ${index + 1}`}
+                      onClick={() => setNewTagColor(index as IdeaColorSlot)}
+                    />
+                  ))}
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <View className='settings-section'>
             <View className='section-heading compact'>
               <Text className='section-title'>数据与隐私</Text>
             </View>
@@ -208,6 +391,20 @@ export default function SettingsPage() {
                   )}
                 </View>
               </View>
+            </View>
+            <View
+              className='archive-entry'
+              ariaRole='button'
+              ariaLabel={`查看已归档任务，共 ${archivedCount} 条`}
+              onClick={() => Taro.navigateTo({ url: '/pages/archive/index' })}
+            >
+              <View className='archive-entry-icon'><View className='archive-entry-box' /></View>
+              <View className='archive-entry-copy'>
+                <Text className='archive-entry-title'>已归档任务</Text>
+                <Text className='archive-entry-description'>查看、复制或恢复已经收纳的任务</Text>
+              </View>
+              <Text className='archive-entry-count'>{archivedCount}</Text>
+              <View className='archive-entry-arrow' />
             </View>
           </View>
 

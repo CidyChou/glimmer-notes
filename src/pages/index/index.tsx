@@ -1,5 +1,5 @@
-import Taro from '@tarojs/taro'
-import { Button, Input, Text, View } from '@tarojs/components'
+import Taro, { useDidShow } from '@tarojs/taro'
+import { Button, Image, Input, Text, View } from '@tarojs/components'
 import { useEffect, useMemo, useState } from 'react'
 import { PRIORITY_META } from '@/constants/priorities'
 import BottomBar from '@/components/BottomBar'
@@ -7,33 +7,61 @@ import ComposerSheet from '@/components/ComposerSheet'
 import DetailSheet from '@/components/DetailSheet'
 import IdeaSpaceCanvas from '@/components/IdeaSpaceCanvas'
 import OrganizeView from '@/components/OrganizeView'
-import { loadIdeaState, recordIdeaDeletion, saveIdeas } from '@/services/ideaStorage'
+import { loadIdeaState, loadProjects, loadTags, recordIdeaDeletion, saveIdeas } from '@/services/ideaStorage'
 import { getSyncStatus, scheduleSync, subscribeSyncData, subscribeSyncStatus } from '@/services/sync'
 import { createId } from '@/utils/id'
+import { copyText } from '@/utils/clipboard'
 import { isToday } from '@/utils/date'
 import { composeIdeaText } from '@/utils/ideaText'
-import type { Idea, PriorityKey } from '@/types/idea'
+import { DEFAULT_PROJECT_ID } from '@/types/idea'
+import type { Idea, IdeaDropTarget, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
+import { findIdeaProject, findIdeaTags, findProjectById, toggleTagId } from '@/utils/tags'
 import { useTheme } from '@/theme'
-import type { IdeaColorSlot } from '@/theme'
+import settingsIcon from '@/assets/icons/settings.png'
 import './index.css'
 
 type Mode = 'space' | 'organize'
 
 export default function IndexPage() {
   const { themeStyle } = useTheme()
-  const [ideas, setIdeas] = useState<Idea[]>(() => loadIdeaState().ideas)
+  const [initialState] = useState(loadIdeaState)
+  const [ideas, setIdeas] = useState<Idea[]>(initialState.ideas)
+  const [projects, setProjects] = useState<IdeaProject[]>(initialState.projects)
+  const [tags, setTags] = useState<IdeaTag[]>(initialState.tags)
   const [mode, setMode] = useState<Mode>('space')
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [composerOpen, setComposerOpen] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const [draftDetails, setDraftDetails] = useState('')
+  const [draftProjectId, setDraftProjectId] = useState(DEFAULT_PROJECT_ID)
+  const [draftTagIds, setDraftTagIds] = useState<string[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [bucketIndex, setBucketIndex] = useState(0)
-  const [dragUi, setDragUi] = useState<{ active: boolean; hover: PriorityKey | null }>({ active: false, hover: null })
+  const [dragUi, setDragUi] = useState<{ active: boolean; hover: IdeaDropTarget | null }>({ active: false, hover: null })
   const [toast, setToast] = useState('')
 
-  useEffect(() => subscribeSyncData(setIdeas), [])
+  useEffect(() => subscribeSyncData((nextIdeas, nextTags, nextProjects) => {
+    setIdeas(nextIdeas)
+    setTags(nextTags)
+    setProjects(nextProjects)
+  }), [])
+
+  useEffect(() => {
+    const refreshTaxonomy = () => {
+      setTags(loadTags())
+      setProjects(loadProjects())
+    }
+    Taro.eventCenter.on('idea-taxonomy-updated', refreshTaxonomy)
+    return () => {
+      Taro.eventCenter.off('idea-taxonomy-updated', refreshTaxonomy)
+    }
+  }, [])
+
+  useDidShow(() => {
+    setTags(loadTags())
+    setProjects(loadProjects())
+  })
 
   useEffect(() => {
     let previous = getSyncStatus().phase
@@ -46,13 +74,21 @@ export default function IndexPage() {
     })
   }, [])
 
-  const selectedIdea = useMemo(() => ideas.find((idea) => idea.id === selectedId) || null, [ideas, selectedId])
-  const todayCount = useMemo(() => ideas.filter((idea) => isToday(idea.createdAt)).length, [ideas])
-  const inboxCount = useMemo(() => ideas.filter((idea) => idea.priority === 'inbox').length, [ideas])
+  const activeIdeas = useMemo(() => ideas.filter((idea) => idea.archivedAt === null), [ideas])
+  const selectedIdea = useMemo(() => activeIdeas.find((idea) => idea.id === selectedId) || null, [activeIdeas, selectedId])
+  const todayCount = useMemo(() => activeIdeas.filter((idea) => isToday(idea.createdAt)).length, [activeIdeas])
+  const inboxCount = useMemo(() => activeIdeas.filter((idea) => idea.priority === 'inbox').length, [activeIdeas])
   const filteredIdeas = useMemo(() => {
     const keyword = query.trim().toLowerCase()
-    return keyword ? ideas.filter((idea) => idea.text.toLowerCase().includes(keyword)) : ideas
-  }, [ideas, query])
+    if (!keyword) return activeIdeas
+    return activeIdeas.filter((idea) => {
+      const project = findIdeaProject(idea, projects)
+      const ideaTags = findIdeaTags(idea, tags)
+      return idea.text.toLowerCase().includes(keyword) ||
+        project.name.toLowerCase().includes(keyword) ||
+        ideaTags.some((tag) => tag.name.toLowerCase().includes(keyword))
+    })
+  }, [activeIdeas, projects, query, tags])
 
   const commitIdeas = (next: Idea[]) => {
     setIdeas(next)
@@ -71,22 +107,70 @@ export default function IndexPage() {
     flash(`已放入「${PRIORITY_META[priority].name}」`)
   }
 
+  const archiveIdea = (id: string) => {
+    const updatedAt = Date.now()
+    commitIdeas(ideas.map((idea) => idea.id === id ? { ...idea, archivedAt: updatedAt, updatedAt } : idea))
+    setSelectedId(null)
+    flash('已归档，可在设置中查看')
+  }
+
+  const assignProject = (id: string, projectId: string) => {
+    const project = findProjectById(projectId, projects)
+    const updatedAt = Date.now()
+    commitIdeas(ideas.map((idea) => idea.id === id ? {
+      ...idea,
+      projectId: project.id,
+      colorSlot: project.colorSlot,
+      updatedAt
+    } : idea))
+    flash(`已归入「${project.name}」`)
+  }
+
+  const toggleIdeaTag = (id: string, tagId: string) => {
+    const tag = tags.find((item) => item.id === tagId)
+    if (!tag) return
+    const updatedAt = Date.now()
+    const current = ideas.find((idea) => idea.id === id)
+    const removing = current?.tagIds.includes(tagId)
+    commitIdeas(ideas.map((idea) => idea.id === id ? {
+      ...idea,
+      tagIds: toggleTagId(idea.tagIds, tagId),
+      updatedAt
+    } : idea))
+    flash(removing ? `已移除「${tag.name}」` : `已添加「${tag.name}」`)
+  }
+
+  const copyIdea = async (idea: Idea) => {
+    try {
+      await copyText(idea.text)
+      flash('已复制到剪贴板')
+    } catch {
+      flash('复制失败，请重试')
+    }
+  }
+
   const saveDraft = () => {
     const text = composeIdeaText(draftTitle, draftDetails)
     if (!draftTitle.trim()) return
     const now = Date.now()
+    const project = findProjectById(draftProjectId, projects)
     const idea: Idea = {
       id: createId(),
       text,
       createdAt: now,
       updatedAt: now,
-      colorSlot: Math.floor(Math.random() * 7) as IdeaColorSlot,
+      colorSlot: project.colorSlot,
+      projectId: project.id,
+      tagIds: draftTagIds,
       pinned: false,
-      priority: 'inbox'
+      priority: 'inbox',
+      archivedAt: null
     }
     commitIdeas([idea, ...ideas])
     setDraftTitle('')
     setDraftDetails('')
+    setDraftProjectId(DEFAULT_PROJECT_ID)
+    setDraftTagIds([])
     setComposerOpen(false)
     setBucketIndex(0)
     flash('已收进碎片池')
@@ -133,16 +217,14 @@ export default function IndexPage() {
               className='icon-btn search-btn'
               ariaLabel='搜索想法'
               onClick={() => setSearchOpen((open) => !open)}
-            >⌕</Button>
+            ><View className='search-glyph' /></Button>
             <Button
               className='icon-btn settings-btn'
               ariaLabel='打开设置'
               onClick={() => Taro.navigateTo({ url: '/pages/settings/index' })}
             >
-              <View className='settings-glyph'>
-                <View className='settings-line line-top'><View className='settings-knob' /></View>
-                <View className='settings-line line-mid'><View className='settings-knob' /></View>
-                <View className='settings-line line-bottom'><View className='settings-knob' /></View>
+              <View className='settings-icon-shell'>
+                <Image className='settings-icon' src={settingsIcon} mode='scaleToFill' />
               </View>
             </Button>
           </View>
@@ -154,20 +236,25 @@ export default function IndexPage() {
             active={mode === 'space'}
             onOpenIdea={setSelectedId}
             onAssignPriority={assignPriority}
+            onArchiveIdea={archiveIdea}
             onDragUiChange={(active, hover) => setDragUi({ active, hover })}
           />
           <View className='space-fade' />
-          <View className='space-hint'>拖动一个想法 → 放入底部优先级</View>
+          <View className='space-hint'>按住想法后拖动，可整理或归档</View>
         </View>
 
         <View className={`organize-view ${mode === 'organize' ? 'active' : ''}`}>
           <OrganizeView
-            ideas={ideas}
-            query={query}
+            ideas={filteredIdeas}
+            projects={projects}
+            tags={tags}
             current={bucketIndex}
             onCurrentChange={setBucketIndex}
             onOpenIdea={setSelectedId}
             onAssignPriority={assignPriority}
+            onArchiveIdea={archiveIdea}
+            onCopyIdea={(idea) => void copyIdea(idea)}
+            onDragUiChange={(active, hover) => setDragUi({ active, hover })}
           />
         </View>
 
@@ -182,12 +269,12 @@ export default function IndexPage() {
         />
 
         <View className={`search-wrap ${searchOpen ? 'show' : ''}`}>
-          <Text>⌕</Text>
+          <View className='search-glyph search-field-glyph' />
           <Input
             className='search-input'
             value={query}
             focus={searchOpen}
-            placeholder='搜索你的想法…'
+            placeholder='搜索任务、项目或标签…'
             onInput={(event) => setQuery(event.detail.value)}
           />
           <Text className='search-close' onClick={() => { setQuery(''); setSearchOpen(false) }}>取消</Text>
@@ -201,18 +288,30 @@ export default function IndexPage() {
         <ComposerSheet
           open={composerOpen}
           title={draftTitle}
-          details={draftDetails}
-          onTitleChange={setDraftTitle}
-          onDetailsChange={setDraftDetails}
+            details={draftDetails}
+            projects={projects}
+            tags={tags}
+            selectedProjectId={draftProjectId}
+            selectedTagIds={draftTagIds}
+            onTitleChange={setDraftTitle}
+            onDetailsChange={setDraftDetails}
+            onProjectChange={setDraftProjectId}
+            onTagToggle={(tagId) => setDraftTagIds((ids) => toggleTagId(ids, tagId))}
           onSave={saveDraft}
         />
         {selectedIdea && (
           <DetailSheet
             key={selectedIdea.id}
             idea={selectedIdea}
+            projects={projects}
+            tags={tags}
             open
             onClose={() => setSelectedId(null)}
             onPriorityChange={(priority) => selectedId && assignPriority(selectedId, priority)}
+            onProjectChange={(projectId) => selectedId && assignProject(selectedId, projectId)}
+            onTagToggle={(tagId) => selectedId && toggleIdeaTag(selectedId, tagId)}
+            onCopy={() => void copyIdea(selectedIdea)}
+            onArchive={() => archiveIdea(selectedIdea.id)}
             onSave={saveSelected}
             onTogglePin={togglePin}
             onDelete={deleteSelected}

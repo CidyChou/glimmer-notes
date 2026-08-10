@@ -1,7 +1,9 @@
-import type { Idea, IdeaTombstone } from '@/types/idea'
+import type { Idea, IdeaProject, IdeaTag, IdeaTombstone } from '@/types/idea'
 
 export interface SyncState {
   ideas: Idea[]
+  projects: IdeaProject[]
+  tags: IdeaTag[]
   tombstones: IdeaTombstone[]
 }
 
@@ -16,6 +18,8 @@ function newestById<T extends { id: string }>(records: T[], timestamp: (record: 
 
 export function mergeSyncStates(local: SyncState, remote: SyncState): SyncState {
   const ideas = newestById([...remote.ideas, ...local.ideas], (idea) => idea.updatedAt)
+  const projects = newestById([...remote.projects, ...local.projects], (project) => project.updatedAt)
+  const tags = newestById([...remote.tags, ...local.tags], (tag) => tag.updatedAt)
   const tombstones = newestById([...remote.tombstones, ...local.tombstones], (item) => item.deletedAt)
   const ids = new Set([...ideas.keys(), ...tombstones.keys()])
   const mergedIdeas: Idea[] = []
@@ -30,5 +34,11 @@ export function mergeSyncStates(local: SyncState, remote: SyncState): SyncState 
 
   mergedIdeas.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id))
   mergedTombstones.sort((left, right) => right.deletedAt - left.deletedAt || left.id.localeCompare(right.id))
-  return { ideas: mergedIdeas, tombstones: mergedTombstones }
+  const mergedTags = [...tags.values()].sort((left, right) => (
+    left.createdAt - right.createdAt || left.id.localeCompare(right.id)
+  ))
+  const mergedProjects = [...projects.values()].sort((left, right) => (
+    Number(right.isDefault) - Number(left.isDefault) || left.createdAt - right.createdAt || left.id.localeCompare(right.id)
+  ))
+  return { ideas: mergedIdeas, projects: mergedProjects, tags: mergedTags, tombstones: mergedTombstones }
 }

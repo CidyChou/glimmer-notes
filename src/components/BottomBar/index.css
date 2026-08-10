@@ -143,8 +143,7 @@
   bottom: 0;
   height: 1px;
   border-radius: 50%;
-  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), .23) 24%, rgba(var(--accent-rgb), .36) 50%, rgba(var(--accent-rgb), .16) 76%, transparent);
-  box-shadow: 0 0 12px rgba(var(--accent-rgb), .12);
+  background: linear-gradient(90deg, transparent, rgba(var(--glass-edge-rgb), .08) 24%, rgba(var(--glass-edge-rgb), .15) 50%, rgba(var(--glass-edge-rgb), .07) 76%, transparent);
 }
 
 .nav-dock > * {
@@ -165,7 +164,6 @@
     radial-gradient(ellipse 62% 72% at 50% 116%, rgba(var(--glass-shade-rgb), .34), transparent 68%),
     radial-gradient(ellipse 34% 78% at 100% 42%, rgba(var(--glass-edge-rgb), .035), transparent 72%),
     radial-gradient(ellipse 40% 62% at 6% -18%, rgba(var(--highlight-rgb), .075), transparent 72%),
-    radial-gradient(ellipse 32% 32% at 27% 104%, rgba(var(--accent-rgb), .10), transparent 72%),
     linear-gradient(180deg, rgba(var(--glass-shade-rgb), .06) 0%, rgba(var(--glass-shade-rgb), .22) 100%),
     linear-gradient(148deg, var(--nav-glass-top) 0%, var(--nav-glass-mid) 48%, var(--nav-glass-deep) 84%);
   -webkit-backdrop-filter: blur(18px) saturate(200%) brightness(var(--glass-brightness)) contrast(var(--glass-contrast));
@@ -193,7 +191,7 @@
     radial-gradient(ellipse 30% 52% at 11% -8%, rgba(var(--highlight-rgb), .38), transparent 66%),
     radial-gradient(ellipse 18% 42% at 91% 3%, rgba(var(--glass-edge-rgb), .09), transparent 72%),
     linear-gradient(90deg, rgba(var(--glass-edge-rgb), .045) 0%, rgba(var(--glass-edge-rgb), .22) 12%, rgba(var(--glass-edge-rgb), .035) 31%, rgba(var(--glass-edge-rgb), .018) 46%, rgba(var(--glass-edge-rgb), .04) 52%, rgba(var(--glass-edge-rgb), .025) 72%, rgba(var(--glass-edge-rgb), .08) 94%, rgba(var(--glass-edge-rgb), .03) 100%),
-    linear-gradient(180deg, rgba(var(--glass-edge-rgb), .035) 0%, rgba(var(--glass-edge-rgb), .012) 38%, rgba(var(--shadow-rgb), .10) 68%, rgba(var(--accent-rgb), .07) 100%);
+    linear-gradient(180deg, rgba(var(--glass-edge-rgb), .035) 0%, rgba(var(--glass-edge-rgb), .012) 38%, rgba(var(--shadow-rgb), .10) 68%, transparent 100%);
   -webkit-mask: var(--nav-glass-rim-mask) center / 100% 100% no-repeat;
   mask: var(--nav-glass-rim-mask) center / 100% 100% no-repeat;
   mix-blend-mode: screen;
@@ -204,7 +202,6 @@
 .nav-glass-shape::after {
   display: block;
   background:
-    radial-gradient(ellipse 34% 24% at 27% 100%, rgba(var(--accent-rgb), .14), transparent 72%),
     radial-gradient(ellipse 25% 56% at 51% -9%, rgba(var(--glass-edge-rgb), .10), transparent 74%),
     linear-gradient(103deg, transparent 19%, rgba(var(--highlight-rgb), .065) 34%, rgba(var(--highlight-rgb), .014) 47%, transparent 61%);
   mix-blend-mode: screen;
@@ -213,10 +210,12 @@
 }
 
 .bottom-zone.dragging .nav-dock {
-  opacity: .34;
-  transform: scale(.98);
+  opacity: 1;
   pointer-events: none;
 }
+
+.bottom-zone.dragging .nav-action { opacity: .24; }
+.bottom-zone.dragging .nav-glass-shape { opacity: .72; }
 
 .nav-action,
 .add-btn {
@@ -424,6 +423,67 @@
   transform: rotate(90deg) scale(.9);
 }
 
+.archive-button-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.bottom-zone.dragging .add-btn {
+  color: var(--text-secondary);
+  background: linear-gradient(180deg, var(--surface-strong), var(--surface-high));
+  border: 1px solid rgba(var(--border-rgb), .13);
+  box-shadow: inset 0 1px 0 rgba(var(--highlight-rgb), .08), 0 10px 24px rgba(var(--shadow-rgb), .30);
+  transform: scale(.94);
+}
+
+.bottom-zone.dragging .add-btn.archive-hover {
+  color: var(--page-bg);
+  background: var(--danger);
+  border-color: var(--danger);
+  box-shadow: inset 0 1px 0 rgba(var(--highlight-rgb), .24), 0 0 0 5px rgba(var(--danger-rgb), .10);
+  transform: scale(1);
+}
+
+.archive-glyph {
+  position: relative;
+  width: 23px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-top-width: 1.5px;
+  border-radius: 3px 3px 5px 5px;
+}
+
+.archive-glyph::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  top: -6px;
+  height: 4px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.archive-glyph::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  top: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.archive-label {
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 800;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .nav-action.active .space-node {
     animation: nav-signal 2.8s ease-in-out infinite;
@@ -458,6 +518,24 @@
   .add-btn { width: 66px; height: 66px; min-width: 66px; min-height: 66px; }
   .nav-label { font-size: 12.5px; }
   .nav-icon { width: 19px; height: 19px; }
+}
+
+@media (min-width: 760px) {
+  .bottom-zone {
+    --nav-glass-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0%200%20660%2090' preserveAspectRatio='none'%3E%3Cpath d='M28,14H280C298,14,301,3,320,1C327,0,333,0,340,1C359,3,362,14,380,14H632C647,14,660,27,660,42V62C660,77,647,90,632,90H28C13,90,0,77,0,62V42C0,27,13,14,28,14Z' fill='black'/%3E%3C/svg%3E");
+    --nav-glass-rim-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0%200%20660%2090' preserveAspectRatio='none'%3E%3Cpath fill-rule='evenodd' d='M28,14H280C298,14,301,3,320,1C327,0,333,0,340,1C359,3,362,14,380,14H632C647,14,660,27,660,42V62C660,77,647,90,632,90H28C13,90,0,77,0,62V42C0,27,13,14,28,14ZM29,16H281C299,16,303,5,321,3C327,2,333,2,339,3C357,5,361,16,379,16H631C646,16,658,28,658,43V61C658,76,646,88,631,88H29C14,88,2,76,2,61V43C2,28,14,16,29,16Z' fill='black'/%3E%3C/svg%3E");
+    left: 50%;
+    right: auto;
+    width: 660px;
+    transform: translateX(-50%);
+  }
+
+  .nav-dock > .nav-glass-shape { top: -14px; }
+
+  .add-well {
+    margin-top: -17px;
+    transform: translateY(0);
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {
