@@ -1,7 +1,20 @@
 page {
   height: 100%;
-  background: #07090d;
-  color: #f4f6fa;
+  background: var(--page-bg);
+  color: var(--text-primary);
+}
+
+html,
+body {
+  margin: 0;
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 view,

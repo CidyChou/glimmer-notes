@@ -1,8 +1,9 @@
 import Taro from '@tarojs/taro'
 import { Canvas } from '@tarojs/components'
 import { useEffect, useRef } from 'react'
-import { PRIORITY_META } from '@/constants/priorities'
+import { getIdeaTitle } from '@/utils/ideaText'
 import type { Idea, PriorityKey } from '@/types/idea'
+import { useTheme } from '@/theme'
 import './index.css'
 
 const CANVAS_ID = 'idea-space-canvas'
@@ -83,6 +84,7 @@ function roundedRectPath(ctx: Context2D, x: number, y: number, w: number, h: num
 }
 
 export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPriority, onDragUiChange }: Props) {
+  const { theme } = useTheme()
   const canvasRef = useRef<CanvasLike>(null)
   const contextRef = useRef<Context2D>(null)
   const rectRef = useRef<CanvasRect>({ left: 0, top: 0, width: 375, height: 560 })
@@ -97,6 +99,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
   const rafRef = useRef<number | null>(null)
   const h5CleanupRef = useRef<(() => void) | null>(null)
   const callbacksRef = useRef({ onOpenIdea, onAssignPriority, onDragUiChange })
+  const themeRef = useRef(theme)
 
   useEffect(() => {
     ideasRef.current = ideas
@@ -106,6 +109,10 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
   useEffect(() => {
     activeRef.current = active
   }, [active])
+
+  useEffect(() => {
+    themeRef.current = theme
+  }, [theme])
 
   useEffect(() => {
     callbacksRef.current = { onOpenIdea, onAssignPriority, onDragUiChange }
@@ -159,6 +166,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
     const { width, height } = rectRef.current
     const camera = cameraRef.current
     const ideasMap = new Map(ideasRef.current.map((idea) => [idea.id, idea]))
+    const currentTheme = themeRef.current
 
     ctx.clearRect(0, 0, width, height)
     ctx.save()
@@ -172,7 +180,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
         const dy = A.y - B.y
         const distance = Math.hypot(dx, dy)
         if (distance < 112) {
-          ctx.strokeStyle = `rgba(135,148,179,${(1 - distance / 112) * 0.11})`
+          ctx.strokeStyle = `rgba(${currentTheme.canvas.linkRgb},${(1 - distance / 112) * 0.11})`
           ctx.lineWidth = 0.7
           ctx.beginPath()
           ctx.moveTo(A.x, A.y)
@@ -186,6 +194,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
       const idea = ideasMap.get(node.id)
       if (!idea) continue
       const dragging = dragIdRef.current === node.id
+      const ideaColor = currentTheme.ideaPalette[idea.colorSlot]
 
       if (!dragging) {
         node.phase += 0.012
@@ -208,15 +217,15 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
       const radius = node.base + pulse + (near ? 2 : 0) + (dragging ? 4 : 0)
 
       const glow = ctx.createRadialGradient(node.x, node.y, 1, node.x, node.y, radius * 4.2)
-      glow.addColorStop(0, hexToRgba(idea.color, 0.5))
-      glow.addColorStop(0.25, hexToRgba(idea.color, 0.2))
-      glow.addColorStop(1, hexToRgba(idea.color, 0))
+      glow.addColorStop(0, hexToRgba(ideaColor, 0.5))
+      glow.addColorStop(0.25, hexToRgba(ideaColor, 0.2))
+      glow.addColorStop(1, hexToRgba(ideaColor, 0))
       ctx.fillStyle = glow
       ctx.beginPath()
       ctx.arc(node.x, node.y, radius * 4.2, 0, Math.PI * 2)
       ctx.fill()
 
-      ctx.fillStyle = idea.color
+      ctx.fillStyle = ideaColor
       ctx.globalAlpha = 0.96
       ctx.beginPath()
       ctx.arc(node.x, node.y, radius, 0, Math.PI * 2)
@@ -224,7 +233,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
       ctx.globalAlpha = 1
 
       if (idea.priority !== 'inbox') {
-        ctx.strokeStyle = PRIORITY_META[idea.priority].color
+        ctx.strokeStyle = currentTheme.priorities[idea.priority]
         ctx.lineWidth = 1.8
         ctx.globalAlpha = 0.85
         ctx.beginPath()
@@ -234,17 +243,18 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
       }
 
       if (near || dragging) {
-        const text = idea.text.length > 16 ? `${idea.text.slice(0, 16)}…` : idea.text
+        const title = getIdeaTitle(idea.text)
+        const text = title.length > 16 ? `${title.slice(0, 16)}…` : title
         ctx.font = '11px sans-serif'
         const textWidth = ctx.measureText(text).width
         const bx = Math.max(10, Math.min(width - textWidth - 28, node.x - textWidth / 2 - 10))
         const by = node.y - 38
         roundedRectPath(ctx, bx, by, textWidth + 20, 27, 9)
-        ctx.fillStyle = 'rgba(15,18,24,0.94)'
+        ctx.fillStyle = currentTheme.canvas.tooltipBackground
         ctx.fill()
-        ctx.strokeStyle = 'rgba(255,255,255,0.07)'
+        ctx.strokeStyle = currentTheme.canvas.tooltipBorder
         ctx.stroke()
-        ctx.fillStyle = '#dfe3ea'
+        ctx.fillStyle = currentTheme.canvas.tooltipText
         ctx.fillText(text, bx + 10, by + 18)
       }
     }
@@ -439,8 +449,9 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
         if (node) {
           dragIdRef.current = node.id
           gesture.nodeStart = { x: node.x, y: node.y }
-          measureDock()
           callbacksRef.current.onDragUiChange(true, null)
+          setTimeout(() => { if (dragIdRef.current) measureDock() }, 32)
+          setTimeout(() => { if (dragIdRef.current) measureDock() }, 240)
         }
       }
 

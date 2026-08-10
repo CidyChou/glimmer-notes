@@ -10,7 +10,8 @@
     "build:h5": "taro build --type h5",
     "dev:tt": "taro build --type tt --watch",
     "build:tt": "taro build --type tt",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:backend": "node --test backend/test/*.test.mjs"
   },
   "browserslist": [
     "last 3 versions",

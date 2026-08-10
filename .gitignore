@@ -17,6 +17,8 @@ dist/
 dist-*/
 build/
 lib/
+!backend/lib/
+!backend/lib/**
 out/
 .tmp/
 .temp/
@@ -116,6 +118,8 @@ private.key
 # =========================
 # Optional local tooling
 # =========================
+__pycache__/
+*.py[cod]
 .eslintcache
 .stylelintcache
 *.local

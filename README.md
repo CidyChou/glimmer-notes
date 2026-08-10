@@ -9,6 +9,7 @@
 - TypeScript
 - Canvas 2D
 - Taro Storage（Local First）
+- 单用户云端同步（Node.js + 原子 JSON 存储）
 - 微信小程序优先，同时预留 H5 / 抖音小程序构建脚本
 
 ## 目录
@@ -76,6 +77,35 @@ npm run dev:h5
 ```bash
 npm run dev:tt
 ```
+
+## 云端同步
+
+客户端始终先写入本地存储。登录云端后，新增、编辑、归类和删除会自动同步；断网期间仍可正常使用，恢复连接后按照每条 Idea 的更新时间合并。删除通过墓碑记录传播，避免离线设备恢复已删除内容。
+
+本地开发后端：
+
+```bash
+node backend/scripts/init-auth.mjs .env.backend
+set -a && source .env.backend && set +a
+npm run test:backend
+node backend/main.mjs
+```
+
+H5 默认连接 `http://127.0.0.1:8769`，可在构建时通过 `TARO_APP_API_BASE_URL` 覆盖。
+
+## 部署到 106 服务器
+
+部署使用 SSH 别名 `tc`，远端目录为 `/data/work/server/glimmer-notes`：
+
+```bash
+make up_client   # H5 -> 106.55.78.71:8770
+make up_backend  # API -> 106.55.78.71:8769
+make up_106      # 依次部署后端和客户端
+```
+
+首次执行 `make up_backend` 会输出一次 `GLIMMER_INITIAL_PASSWORD`。请立即保存，后续部署会保留服务端鉴权配置且不再显示明文口令。
+
+当前两个端口使用 HTTP 公网访问。正式存放敏感内容前，应配置 HTTPS 域名，并通过 `API_BASE_URL` 与 `ALLOWED_ORIGINS` 切换地址。
 
 ## 注意
 

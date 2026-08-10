@@ -1,0 +1,116 @@
+import assert from 'node:assert/strict'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import test from 'node:test'
+import { hashPassword, createSessionToken, verifySessionToken } from '../lib/auth.mjs'
+import { JsonSyncStore, mergeStates } from '../lib/store.mjs'
+import { createApiServer } from '../server.mjs'
+
+function idea(overrides = {}) {
+  return {
+    id: 'idea-1',
+    text: 'An idea',
+    createdAt: 100,
+    updatedAt: 100,
+    colorSlot: 0,
+    pinned: false,
+    priority: 'inbox',
+    ...overrides
+  }
+}
+
+test('newer records win and an equally new tombstone wins over a live idea', () => {
+  const merged = mergeStates(
+    { ideas: [idea()], tombstones: [] },
+    { ideas: [idea({ text: 'New', updatedAt: 200 })], tombstones: [{ id: 'idea-1', deletedAt: 200 }] }
+  )
+  assert.deepEqual(merged.ideas, [])
+  assert.deepEqual(merged.tombstones, [{ id: 'idea-1', deletedAt: 200 }])
+})
+
+test('a newer live record can intentionally restore a deleted idea', () => {
+  const merged = mergeStates(
+    { ideas: [], tombstones: [{ id: 'idea-1', deletedAt: 200 }] },
+    { ideas: [idea({ updatedAt: 201 })], tombstones: [] }
+  )
+  assert.equal(merged.ideas[0].id, 'idea-1')
+  assert.deepEqual(merged.tombstones, [])
+})
+
+test('session tokens are signed and expire', () => {
+  const token = createSessionToken('secret', 1_000, 10)
+  assert.equal(verifySessionToken(token, 'secret', 10_000).expiresAt, 11_000)
+  assert.equal(verifySessionToken(token, 'wrong', 10_000), null)
+  assert.equal(verifySessionToken(token, 'secret', 11_000), null)
+})
+
+test('JSON store persists merged state across restarts', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'glimmer-store-'))
+  const file = path.join(directory, 'store.json')
+  try {
+    const first = new JsonSyncStore(file)
+    await first.init()
+    await first.merge({ ideas: [idea()], tombstones: [] })
+    const second = new JsonSyncStore(file)
+    await second.init()
+    assert.equal(second.read().ideas[0].text, 'An idea')
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).schemaVersion, 1)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('HTTP API authenticates, enforces CORS, validates and syncs', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'glimmer-api-'))
+  const passwordSalt = 'test-salt'
+  const server = await createApiServer({
+    dataFile: path.join(directory, 'store.json'),
+    allowedOrigins: 'http://client.example',
+    passwordSalt,
+    passwordHash: hashPassword('correct horse', passwordSalt),
+    sessionSecret: 'test-session-secret',
+    sessionTtlSeconds: 60
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  const baseUrl = `http://127.0.0.1:${address.port}`
+  try {
+    const health = await fetch(`${baseUrl}/health`)
+    assert.equal(health.status, 200)
+
+    const rejected = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'wrong' })
+    })
+    assert.equal(rejected.status, 401)
+
+    const login = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'http://client.example' },
+      body: JSON.stringify({ password: 'correct horse' })
+    })
+    assert.equal(login.status, 200)
+    assert.equal(login.headers.get('access-control-allow-origin'), 'http://client.example')
+    const { token } = await login.json()
+
+    const invalid = await fetch(`${baseUrl}/api/sync`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ideas: [{ nope: true }], tombstones: [] })
+    })
+    assert.equal(invalid.status, 400)
+
+    const synced = await fetch(`${baseUrl}/api/sync`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ideas: [idea()], tombstones: [] })
+    })
+    assert.equal(synced.status, 200)
+    assert.equal((await synced.json()).ideas[0].id, 'idea-1')
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+    await rm(directory, { recursive: true, force: true })
+  }
+})
