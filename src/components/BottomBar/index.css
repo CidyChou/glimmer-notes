@@ -1,0 +1,19 @@
+.bottom-bar { position: absolute; z-index: 18; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: 1fr 64px; gap: 10px; align-items: end; }
+.daily-card { position: relative; min-height: 60px; border: 1px solid rgba(255,255,255,.075); border-radius: 20px; background: rgba(14,17,23,.88); backdrop-filter: blur(22px); padding: 11px 14px; display: flex; align-items: center; gap: 12px; overflow: hidden; }
+.daily-content { display: flex; align-items: center; gap: 12px; transition: .16s; }
+.daily-dot { width: 33px; height: 33px; border-radius: 50%; background: radial-gradient(circle at 33% 30%, #fff, #d9ff69 31%, #8da61f 100%); box-shadow: 0 0 28px rgba(225,255,105,.24); flex: 0 0 auto; }
+.daily-title { display: block; font-size: 13px; font-weight: 700; }
+.daily-subline { display: block; color: #778091; font-size: 11px; margin-top: 3px; }
+.add-btn { width: 64px; height: 64px; padding: 0; line-height: 64px; border-radius: 22px; border: 0; background: #eaff6e; color: #0a0b0d; font-size: 31px; font-weight: 300; box-shadow: 0 10px 34px rgba(216,255,78,.22); }
+.priority-dock { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; opacity: 0; transform: translateY(14px); pointer-events: none; transition: .18s; }
+.bottom-bar.dragging .priority-dock { opacity: 1; transform: none; pointer-events: auto; }
+.bottom-bar.dragging .daily-content { opacity: 0; transform: translateY(-8px); pointer-events: none; }
+.dock-action { min-height: 58px; border-radius: 17px; border: 1px solid rgba(255,255,255,.12); color: white; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; box-shadow: 0 10px 28px rgba(0,0,0,.24); transition: .12s; }
+.dock-action.red { background: linear-gradient(180deg, rgba(255,91,97,.96), rgba(145,37,42,.96)); }
+.dock-action.orange { background: linear-gradient(180deg, rgba(255,171,88,.97), rgba(148,80,31,.97)); }
+.dock-action.blue { background: linear-gradient(180deg, rgba(93,164,255,.97), rgba(42,82,153,.97)); }
+.dock-action.hover { transform: translateY(-8px) scale(1.05); box-shadow: 0 14px 38px rgba(0,0,0,.35), 0 0 0 2px rgba(255,255,255,.7) inset; }
+.dock-title { font-size: 10px; font-weight: 820; }
+.dock-sub { font-size: 7.8px; opacity: .74; white-space: nowrap; }
+.drag-caption { position: absolute; z-index: 20; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translate(-50%, 8px); opacity: 0; padding: 7px 11px; border-radius: 999px; background: rgba(9,11,16,.92); border: 1px solid rgba(255,255,255,.075); color: #c6cbd5; font-size: 9px; white-space: nowrap; transition: .16s; pointer-events: none; }
+.drag-caption.show { opacity: 1; transform: translate(-50%,0); }

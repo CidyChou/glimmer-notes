@@ -1,0 +1,21 @@
+page {
+  height: 100%;
+  background: #07090d;
+  color: #f4f6fa;
+}
+
+view,
+text,
+button,
+input,
+textarea,
+scroll-view,
+swiper,
+swiper-item,
+canvas {
+  box-sizing: border-box;
+}
+
+button::after {
+  border: 0;
+}

@@ -1,0 +1,46 @@
+.organize-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.organize-head {
+  flex: 0 0 auto;
+  padding: 8px 18px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bucket-copy { min-width: 0; }
+.bucket-kicker { display: block; font-size: 9px; letter-spacing: .15em; color: #687183; font-weight: 800; }
+.bucket-title-line { margin-top: 5px; display: flex; align-items: center; gap: 8px; }
+.bucket-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.bucket-title { font-size: 18px; font-weight: 790; letter-spacing: -.025em; }
+.bucket-count { font-size: 10px; color: #626b7d; margin-left: 1px; }
+.swipe-tip { font-size: 10px; color: #646d7d; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
+.swipe-tip text:first-child,
+.swipe-tip text:last-child { font-size: 15px; color: #8991a0; }
+
+.bucket-progress { padding: 0 18px 11px; display: flex; gap: 6px; }
+.progress-item { height: 10px; flex: 1; display: flex; align-items: center; }
+.progress-item::before { content: ''; position: absolute; }
+.progress-fill { width: 100%; height: 3px; border-radius: 999px; background: transparent; }
+.progress-item { border-radius: 999px; background: linear-gradient(to bottom, transparent 3px, #242a34 3px, #242a34 6px, transparent 6px); }
+
+.organize-swiper { flex: 1; min-height: 0; width: 100%; }
+.bucket-swiper-item { height: 100%; }
+.bucket-page { height: 100%; padding: 0 18px 28px; }
+.timeline-list { padding-bottom: 30px; }
+.day-label { color: #626b7c; font-size: 9px; font-weight: 800; letter-spacing: .14em; margin: 8px 3px; }
+.idea-row { position: relative; padding: 13px 14px 12px 16px; margin-bottom: 9px; border-radius: 17px; background: linear-gradient(180deg, rgba(19,22,29,.95), rgba(13,16,22,.9)); border: 1px solid rgba(255,255,255,.062); overflow: hidden; }
+.idea-row::before { content: ''; position: absolute; left: 0; top: 13px; bottom: 13px; width: 2px; border-radius: 2px; background: var(--row-color); }
+.idea-row-text { display: block; color: #dfe3ea; font-size: 12px; line-height: 1.5; }
+.idea-row-footer { margin-top: 7px; display: flex; justify-content: space-between; gap: 10px; color: #5d6677; font-size: 8.5px; }
+.empty-state { height: 58%; min-height: 270px; display: flex; align-items: center; justify-content: center; text-align: center; color: #596274; }
+.empty-orb { width: 44px; height: 44px; margin: 0 auto 13px; border-radius: 50%; border: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; justify-content: center; color: #798294; background: #0d1016; box-shadow: 0 12px 35px rgba(0,0,0,.25); }
+.empty-title { display: block; font-size: 12px; color: #818a9a; font-weight: 700; }
+.empty-copy { display: block; white-space: pre-line; font-size: 10px; margin-top: 5px; line-height: 1.55; }

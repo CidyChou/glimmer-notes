@@ -1,0 +1,15 @@
+.detail-sheet { position: absolute; z-index: 31; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); border: 1px solid rgba(255,255,255,.09); border-radius: 26px; background: linear-gradient(180deg,#171b24,#0e1117); box-shadow: 0 -22px 60px rgba(0,0,0,.42); transform: translateY(115%); transition: .25s; padding: 16px; }
+.detail-sheet.show { transform: none; }
+.detail-grabber { width: 34px; height: 4px; border-radius: 999px; background: #343a46; margin: 0 auto 12px; }
+.detail-top { display: flex; justify-content: space-between; align-items: center; }
+.detail-time { font-size: 9px; color: #6b7485; }
+.close-btn { margin: 0; padding: 0; width: 32px; height: 32px; line-height: 32px; border-radius: 11px; background: #222732; color: #aeb5c2; font-size: 18px; }
+.detail-text { display: block; font-size: 17px; line-height: 1.6; color: #edf0f5; padding: 16px 2px 13px; }
+.priority-picker-title { display: block; font-size: 9px; letter-spacing: .12em; color: #697284; font-weight: 800; margin: 3px 0 8px; }
+.priority-picker { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; }
+.priority-pill { border: 1px solid rgba(255,255,255,.07); background: #141820; color: #818a9a; border-radius: 12px; min-height: 42px; padding: 5px 4px; font-size: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.priority-pill.active { color: white; }
+.priority-pill-dot { width: 6px; height: 6px; border-radius: 50%; margin: 0 auto 4px; }
+.detail-actions { display: flex; gap: 8px; margin-top: 13px; }
+.detail-actions button { flex: 1; margin: 0; height: 41px; line-height: 41px; border-radius: 13px; border: 1px solid rgba(255,255,255,.075); background: #141820; color: #b7beca; font-size: 10px; }
+.detail-actions .danger { color: #ff7b80; background: rgba(255,91,97,.07); }

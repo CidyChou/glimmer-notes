@@ -1,0 +1,16 @@
+{
+  "description": "Idea Space Taro 微信小程序",
+  "miniprogramRoot": "dist/",
+  "projectname": "idea-space",
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": false,
+    "compileHotReLoad": true
+  },
+  "simulatorType": "wechat",
+  "condition": {}
+}
