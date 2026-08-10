@@ -1,3 +1,4 @@
+import path from 'path'
 import { defineConfig, type UserConfigExport } from '@tarojs/cli'
 import devConfig from './dev'
 import prodConfig from './prod'
@@ -23,6 +24,9 @@ export default defineConfig<'webpack5'>(async (merge, { command }) => {
     },
     framework: 'react',
     compiler: 'webpack5',
+    alias: {
+      '@': path.resolve(__dirname, '..', 'src')
+    },
     cache: {
       enable: true
     },

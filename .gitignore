@@ -1,0 +1,139 @@
+# =========================
+# Dependencies
+# =========================
+node_modules/
+.pnpm-store/
+.yarn/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# =========================
+# Taro / build output
+# =========================
+dist/
+dist-*/
+build/
+lib/
+out/
+.tmp/
+.temp/
+.cache/
+.swc/
+.turbo/
+
+# Taro prebundle / webpack cache
+node_modules/.taro/
+node_modules/.cache/
+.swcrc
+
+# =========================
+# TypeScript
+# =========================
+*.tsbuildinfo
+.tscache/
+
+# =========================
+# Logs & debug
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# =========================
+# Environment & secrets
+# =========================
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+!*.key.example
+
+# =========================
+# Test / coverage
+# =========================
+coverage/
+.nyc_output/
+*.lcov
+.jest/
+
+# =========================
+# Editor / IDE
+# =========================
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+.history/
+.cursor/
+.claude/
+.agent/
+
+# =========================
+# macOS
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# =========================
+# WeChat / mini program
+# =========================
+# 微信开发者工具本地私有配置（含本机路径、编译选项等）
+project.private.config.json
+project.tt.private.config.json
+
+# 小程序上传/签名相关本地文件
+private.key
+**/miniprogram_npm/
+
+# =========================
+# Optional local tooling
+# =========================
+.eslintcache
+.stylelintcache
+*.local
+*.local.*
+.vercel/
+.netlify/
+.firebase/
+.sass-cache/
+.parcel-cache/
+
+# =========================
+# OS / misc
+# =========================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.swp
+*.swo
+*~
+.vim/

@@ -252,16 +252,43 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
     ctx.restore()
   }
 
+  /** H5 上 Taro Canvas 渲染为 taro-canvas-core，真正的 <canvas> 在其子节点里 */
+  const resolveH5Canvas = (hostOrCanvas: Element | null): HTMLCanvasElement | null => {
+    if (!hostOrCanvas) return null
+    if (typeof (hostOrCanvas as HTMLCanvasElement).getContext === 'function') {
+      return hostOrCanvas as HTMLCanvasElement
+    }
+    const nested = hostOrCanvas.querySelector?.('canvas') as HTMLCanvasElement | null
+    if (nested && typeof nested.getContext === 'function') return nested
+    const shadow = (hostOrCanvas as HTMLElement).shadowRoot?.querySelector('canvas') as HTMLCanvasElement | null
+    if (shadow && typeof shadow.getContext === 'function') return shadow
+    return null
+  }
+
   const configureCanvas = (canvas: CanvasLike, rect: CanvasRect) => {
+    if (!canvas || typeof canvas.getContext !== 'function') {
+      console.warn('[IdeaSpaceCanvas] invalid canvas node, skip configure')
+      return
+    }
     const dpr = Math.min(2, Taro.getWindowInfo?.().pixelRatio || Taro.getSystemInfoSync().pixelRatio || 1)
     const ctx = canvas.getContext('2d')
-    canvas.width = Math.round(rect.width * dpr)
-    canvas.height = Math.round(rect.height * dpr)
+    if (!ctx) {
+      console.warn('[IdeaSpaceCanvas] getContext("2d") returned null')
+      return
+    }
+    const width = Math.max(1, rect.width)
+    const height = Math.max(1, rect.height)
+    canvas.width = Math.round(width * dpr)
+    canvas.height = Math.round(height * dpr)
+    if (typeof canvas.style !== 'undefined') {
+      canvas.style.width = `${width}px`
+      canvas.style.height = `${height}px`
+    }
     if (ctx.setTransform) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     else ctx.scale(dpr, dpr)
     canvasRef.current = canvas
     contextRef.current = ctx
-    rectRef.current = rect
+    rectRef.current = { ...rect, width, height }
     syncNodes()
     if (rafRef.current !== null) cancelFrame(rafRef.current)
     rafRef.current = requestFrame(draw)
@@ -282,6 +309,61 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
         height: rectResult.height || nodeResult.height || 560
       })
     })
+  }
+
+  const initH5Canvas = (attempt = 0) => {
+    if (typeof document === 'undefined') return
+    const host = document.getElementById(CANVAS_ID)
+    const canvas = resolveH5Canvas(host)
+    if (!canvas || !host) {
+      if (attempt < 12) {
+        setTimeout(() => initH5Canvas(attempt + 1), 50)
+      }
+      return
+    }
+    const rect = host.getBoundingClientRect()
+    const width = rect.width || host.clientWidth || 375
+    const height = rect.height || host.clientHeight || 560
+    configureCanvas(canvas, {
+      left: rect.left,
+      top: rect.top,
+      width,
+      height
+    })
+
+    const pointerDown = (event: PointerEvent) => {
+      event.preventDefault()
+      beginPointer(event.clientX, event.clientY)
+    }
+    const pointerMove = (event: PointerEvent) => movePointer(event.clientX, event.clientY)
+    const pointerUp = (event: PointerEvent) => endPointer(event.clientX, event.clientY)
+    const pointerCancel = () => cancelPointer()
+    const onResize = () => {
+      const next = host.getBoundingClientRect()
+      configureCanvas(canvas, {
+        left: next.left,
+        top: next.top,
+        width: next.width || host.clientWidth || 375,
+        height: next.height || host.clientHeight || 560
+      })
+    }
+
+    canvas.style.touchAction = 'none'
+    canvas.addEventListener('pointerdown', pointerDown)
+    canvas.addEventListener('pointermove', pointerMove)
+    canvas.addEventListener('pointerup', pointerUp)
+    canvas.addEventListener('pointercancel', pointerCancel)
+    canvas.addEventListener('pointerleave', pointerCancel)
+    window.addEventListener('resize', onResize)
+
+    h5CleanupRef.current = () => {
+      canvas.removeEventListener('pointerdown', pointerDown)
+      canvas.removeEventListener('pointermove', pointerMove)
+      canvas.removeEventListener('pointerup', pointerUp)
+      canvas.removeEventListener('pointercancel', pointerCancel)
+      canvas.removeEventListener('pointerleave', pointerCancel)
+      window.removeEventListener('resize', onResize)
+    }
   }
 
   const getLocalPoint = (clientX: number, clientY: number): Point => ({
@@ -422,28 +504,8 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (process.env.TARO_ENV === 'h5' && typeof document !== 'undefined') {
-        const canvas = document.getElementById(CANVAS_ID) as HTMLCanvasElement | null
-        if (!canvas) return
-        const rect = canvas.getBoundingClientRect()
-        configureCanvas(canvas, { left: rect.left, top: rect.top, width: rect.width, height: rect.height })
-
-        const pointerDown = (event: PointerEvent) => beginPointer(event.clientX, event.clientY)
-        const pointerMove = (event: PointerEvent) => movePointer(event.clientX, event.clientY)
-        const pointerUp = (event: PointerEvent) => endPointer(event.clientX, event.clientY)
-        const pointerCancel = () => cancelPointer()
-        canvas.addEventListener('pointerdown', pointerDown)
-        canvas.addEventListener('pointermove', pointerMove)
-        canvas.addEventListener('pointerup', pointerUp)
-        canvas.addEventListener('pointercancel', pointerCancel)
-        canvas.addEventListener('pointerleave', pointerCancel)
-        h5CleanupRef.current = () => {
-          canvas.removeEventListener('pointerdown', pointerDown)
-          canvas.removeEventListener('pointermove', pointerMove)
-          canvas.removeEventListener('pointerup', pointerUp)
-          canvas.removeEventListener('pointercancel', pointerCancel)
-          canvas.removeEventListener('pointerleave', pointerCancel)
-        }
+      if (process.env.TARO_ENV === 'h5') {
+        initH5Canvas()
       } else {
         measureCanvasForMiniProgram()
       }
@@ -452,6 +514,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
     return () => {
       clearTimeout(timer)
       h5CleanupRef.current?.()
+      h5CleanupRef.current = null
       if (rafRef.current !== null) cancelFrame(rafRef.current)
       rafRef.current = null
     }
