@@ -1,0 +1,158 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]: IDEA INBOX
+      - generic [ref=e9]: 拾光笔记
+    - generic [ref=e10]:
+      - generic "搜索想法" [ref=e11]
+      - generic "打开设置" [ref=e13]
+  - generic [ref=e15]: 按住想法后拖动，可整理或归档
+  - generic:
+    - generic:
+      - generic:
+        - generic: 按住卡片约 0.4 秒后拖动，六点标识按住即可移动
+        - generic: "7"
+      - generic:
+        - button "碎片池，3 条":
+          - generic: 碎片池
+          - generic: "3"
+        - button "现在做，1 条":
+          - generic: 现在做
+          - generic: "1"
+        - button "计划做，2 条":
+          - generic: 计划做
+          - generic: "2"
+        - button "快处理，1 条":
+          - generic: 快处理
+          - generic: "1"
+      - generic:
+        - generic: 刚记下来的东西先待在这里
+        - generic: 左右滑动切换
+      - generic:
+        - generic:
+          - generic:
+            - group "1 / 4":
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: 今天
+                    - button "编辑任务：做一个打开微信就能立刻记录灵感的工具":
+                      - generic:
+                        - generic:
+                          - generic: 做一个打开微信就能立刻记录灵感的工具
+                          - generic: 默认项目
+                        - generic:
+                          - generic: 17:29
+                          - generic: 还没整理
+                        - button "复制任务：做一个打开微信就能立刻记录灵感的工具"
+                        - button "移动任务：做一个打开微信就能立刻记录灵感的工具"
+                  - generic:
+                    - button "编辑任务：Web 端更适合整理，微信端只负责 capture":
+                      - generic:
+                        - generic:
+                          - generic: Web 端更适合整理，微信端只负责 capture
+                          - generic: 默认项目
+                        - generic:
+                          - generic: 14:35
+                          - generic: 还没整理
+                        - button "复制任务：Web 端更适合整理，微信端只负责 capture"
+                        - button "移动任务：Web 端更适合整理，微信端只负责 capture"
+                  - generic:
+                    - button "编辑任务：保存时让文字缩成粒子飞进空间里":
+                      - generic:
+                        - generic:
+                          - generic: 保存时让文字缩成粒子飞进空间里
+                          - generic: 默认项目
+                        - generic:
+                          - generic: 14:01
+                          - generic: 还没整理
+                        - button "复制任务：保存时让文字缩成粒子飞进空间里"
+                        - button "移动任务：保存时让文字缩成粒子飞进空间里"
+            - group "2 / 4":
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: 今天
+                    - button "编辑任务：游戏升级后直接给颜料，杀敌只是升级手段":
+                      - generic:
+                        - generic:
+                          - generic: 游戏升级后直接给颜料，杀敌只是升级手段
+                          - generic: 默认项目
+                        - generic:
+                          - generic: 16:54
+                          - generic: 重要且紧急
+                        - button "复制任务：游戏升级后直接给颜料，杀敌只是升级手段"
+                        - button "移动任务：游戏升级后直接给颜料，杀敌只是升级手段"
+            - group "3 / 4":
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: 今天
+                    - button "编辑任务：首页不要列表，做成会轻微漂浮的 Idea Space":
+                      - generic:
+                        - generic:
+                          - generic: 首页不要列表，做成会轻微漂浮的 Idea Space
+                          - generic: 默认项目
+                        - generic:
+                          - generic: 16:20
+                          - generic: ★ 重要非紧急
+                        - button "复制任务：首页不要列表，做成会轻微漂浮的 Idea Space"
+                        - button "移动任务：首页不要列表，做成会轻微漂浮的 Idea Space"
+                  - generic:
+                    - button "编辑任务：以后可以让 AI 自动把相关碎片连起来":
+                      - generic:
+                        - generic:
+                          - generic: 以后可以让 AI 自动把相关碎片连起来
+                          - generic: 默认项目
+                        - generic:
+                          - generic: 15:46
+                          - generic: 重要非紧急
+                        - button "复制任务：以后可以让 AI 自动把相关碎片连起来"
+                        - button "移动任务：以后可以让 AI 自动把相关碎片连起来"
+            - group "4 / 4":
+              - generic:
+                - generic:
+                  - generic:
+                    - generic: 今天
+                    - button "编辑任务：记录动作一定要在 3 秒内完成":
+                      - generic:
+                        - generic:
+                          - generic: 记录动作一定要在 3 秒内完成
+                          - generic: 默认项目
+                        - generic:
+                          - generic: 15:09
+                          - generic: 非重要但紧急
+                        - button "复制任务：记录动作一定要在 3 秒内完成"
+                        - button "移动任务：记录动作一定要在 3 秒内完成"
+      - generic:
+        - generic:
+          - generic: 拖进收纳圈后松手
+          - generic:
+            - button "移到碎片池":
+              - generic: 碎片池
+            - button "移到现在做":
+              - generic: 现在做
+            - button "移到计划做":
+              - generic: 计划做
+            - button "移到快处理":
+              - generic: 快处理
+          - generic: 取消
+  - generic:
+    - generic [ref=e18]:
+      - generic [ref=e22]:
+        - generic [ref=e23]: 今天记录了 7 个想法
+        - generic [ref=e24]: 还有 3 个未整理碎片
+      - generic:
+        - generic: 拖进收纳圈后松手，圈外保持原位
+        - generic:
+          - generic: 现在做
+          - generic: 计划做
+          - generic: 快处理
+    - generic [ref=e25]:
+      - generic [ref=e26]: 空间
+      - generic "添加想法" [ref=e33]
+      - generic [ref=e35]: 整理
+  - generic:
+    - generic:
+      - textbox "搜索任务、项目或标签…"
+    - generic: 取消

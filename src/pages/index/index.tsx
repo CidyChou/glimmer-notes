@@ -7,7 +7,7 @@ import ComposerSheet from '@/components/ComposerSheet'
 import DetailSheet from '@/components/DetailSheet'
 import IdeaSpaceCanvas from '@/components/IdeaSpaceCanvas'
 import OrganizeView from '@/components/OrganizeView'
-import { loadIdeaState, loadProjects, loadTags, recordIdeaDeletion, saveIdeas } from '@/services/ideaStorage'
+import { loadIdeaState, recordIdeaDeletion, saveIdeas, saveProjects } from '@/services/ideaStorage'
 import { getSyncStatus, scheduleSync, subscribeSyncData, subscribeSyncStatus } from '@/services/sync'
 import { createId } from '@/utils/id'
 import { copyText } from '@/utils/clipboard'
@@ -17,6 +17,7 @@ import { DEFAULT_PROJECT_ID } from '@/types/idea'
 import type { Idea, IdeaDropTarget, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
 import { findIdeaProject, findIdeaTags, findProjectById, toggleTagId } from '@/utils/tags'
 import { useTheme } from '@/theme'
+import type { IdeaColorSlot } from '@/theme'
 import settingsIcon from '@/assets/icons/settings.png'
 import './index.css'
 
@@ -49,8 +50,10 @@ export default function IndexPage() {
 
   useEffect(() => {
     const refreshTaxonomy = () => {
-      setTags(loadTags())
-      setProjects(loadProjects())
+      const nextState = loadIdeaState()
+      setIdeas(nextState.ideas)
+      setTags(nextState.tags)
+      setProjects(nextState.projects)
     }
     Taro.eventCenter.on('idea-taxonomy-updated', refreshTaxonomy)
     return () => {
@@ -59,8 +62,10 @@ export default function IndexPage() {
   }, [])
 
   useDidShow(() => {
-    setTags(loadTags())
-    setProjects(loadProjects())
+    const nextState = loadIdeaState()
+    setIdeas(nextState.ideas)
+    setTags(nextState.tags)
+    setProjects(nextState.projects)
   })
 
   useEffect(() => {
@@ -174,6 +179,42 @@ export default function IndexPage() {
     setComposerOpen(false)
     setBucketIndex(0)
     flash('已收进碎片池')
+  }
+
+  const createProject = (name: string, colorSlot: IdeaColorSlot): IdeaProject | null => {
+    const normalizedName = name.trim().slice(0, 16)
+    if (!normalizedName) return null
+    if (projects.some((project) => project.name.toLowerCase() === normalizedName.toLowerCase())) {
+      flash('已经有同名项目了')
+      return null
+    }
+
+    const now = Date.now()
+    const project: IdeaProject = {
+      id: createId(),
+      name: normalizedName,
+      colorSlot,
+      createdAt: now,
+      updatedAt: now,
+      isDefault: false
+    }
+    const nextProjects = [...projects, project]
+    setProjects(nextProjects)
+    saveProjects(nextProjects)
+    Taro.eventCenter.trigger('idea-taxonomy-updated')
+
+    if (selectedId) {
+      commitIdeas(ideas.map((idea) => idea.id === selectedId ? {
+        ...idea,
+        projectId: project.id,
+        colorSlot: project.colorSlot,
+        updatedAt: now
+      } : idea))
+    } else {
+      scheduleSync()
+    }
+    flash(`已添加项目「${project.name}」`)
+    return project
   }
 
   const saveSelected = (title: string, details: string) => {
@@ -309,6 +350,7 @@ export default function IndexPage() {
             onClose={() => setSelectedId(null)}
             onPriorityChange={(priority) => selectedId && assignPriority(selectedId, priority)}
             onProjectChange={(projectId) => selectedId && assignProject(selectedId, projectId)}
+            onCreateProject={createProject}
             onTagToggle={(tagId) => selectedId && toggleIdeaTag(selectedId, tagId)}
             onCopy={() => void copyIdea(selectedIdea)}
             onArchive={() => archiveIdea(selectedIdea.id)}

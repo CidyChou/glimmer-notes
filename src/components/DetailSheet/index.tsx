@@ -6,6 +6,7 @@ import { formatDetailTime } from '@/utils/date'
 import { composeIdeaText, splitIdeaText } from '@/utils/ideaText'
 import type { Idea, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
 import { useTheme } from '@/theme'
+import type { IdeaColorSlot } from '@/theme'
 import './index.css'
 
 interface Props {
@@ -16,6 +17,7 @@ interface Props {
   onClose: () => void
   onPriorityChange: (priority: PriorityKey) => void
   onProjectChange: (projectId: string) => void
+  onCreateProject: (name: string, colorSlot: IdeaColorSlot) => IdeaProject | null
   onTagToggle: (tagId: string) => void
   onSave: (title: string, details: string) => void
   onTogglePin: () => void
@@ -24,16 +26,29 @@ interface Props {
   onDelete: () => void
 }
 
-export default function DetailSheet({ idea, projects, tags, open, onClose, onPriorityChange, onProjectChange, onTagToggle, onSave, onTogglePin, onCopy, onArchive, onDelete }: Props) {
+export default function DetailSheet({ idea, projects, tags, open, onClose, onPriorityChange, onProjectChange, onCreateProject, onTagToggle, onSave, onTogglePin, onCopy, onArchive, onDelete }: Props) {
   const { theme } = useTheme()
   const originalContent = splitIdeaText(idea.text)
   const [title, setTitle] = useState(originalContent.title)
   const [details, setDetails] = useState(originalContent.details)
+  const [projectCreateOpen, setProjectCreateOpen] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [newProjectColor, setNewProjectColor] = useState<IdeaColorSlot>(2)
   const hasTitle = !!title.trim()
   const hasChanges = composeIdeaText(title, details) !== composeIdeaText(
     originalContent.title,
     originalContent.details
   )
+
+  const submitProject = () => {
+    const name = newProjectName.trim()
+    if (!name) return
+    const project = onCreateProject(name, newProjectColor)
+    if (!project) return
+    setNewProjectName('')
+    setProjectCreateOpen(false)
+    setNewProjectColor(((project.colorSlot + 1) % theme.ideaPalette.length) as IdeaColorSlot)
+  }
 
   return (
     <View className={`detail-sheet ${open ? 'show' : ''}`}>
@@ -117,8 +132,54 @@ export default function DetailSheet({ idea, projects, tags, open, onClose, onPri
               <Text>{project.name}</Text>
             </View>
           ))}
+          <View
+            className={`detail-tag project-add ${projectCreateOpen ? 'active' : ''}`}
+            ariaRole='button'
+            ariaLabel='新增项目'
+            onClick={() => setProjectCreateOpen((value) => !value)}
+          >
+            <View className='project-add-glyph'>+</View>
+            <Text>新增项目</Text>
+          </View>
         </View>
       </ScrollView>
+      {projectCreateOpen && (
+        <View className='detail-project-create'>
+          <View className='detail-project-create-row'>
+            <Input
+              className='detail-project-name-input'
+              value={newProjectName}
+              maxlength={16}
+              ariaLabel='新项目名称'
+              placeholder='输入项目名称'
+              placeholderClass='detail-project-name-placeholder'
+              confirmType='done'
+              onInput={(event) => setNewProjectName(event.detail.value)}
+              onConfirm={submitProject}
+            />
+            <Button
+              className='detail-project-save-btn'
+              disabled={newProjectName.trim() ? undefined : true}
+              onClick={submitProject}
+            >保存</Button>
+          </View>
+          <View className='detail-project-create-footer'>
+            <View className='detail-project-colors'>
+              {theme.ideaPalette.map((_, index) => (
+                <View
+                  key={index}
+                  className={`detail-project-color ${newProjectColor === index ? 'active' : ''}`}
+                  style={{ '--tag-color': theme.ideaPalette[index] } as CSSProperties}
+                  ariaRole='button'
+                  ariaLabel={`选择项目颜色 ${index + 1}`}
+                  onClick={() => setNewProjectColor(index as IdeaColorSlot)}
+                />
+              ))}
+            </View>
+            <Text className='detail-project-cancel' onClick={() => setProjectCreateOpen(false)}>取消</Text>
+          </View>
+        </View>
+      )}
       <View className='detail-taxonomy-title'>
         <Text className='priority-picker-title tag-picker-title'>任务标签</Text>
         <Text className='detail-taxonomy-hint'>可多选</Text>

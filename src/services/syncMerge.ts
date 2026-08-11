@@ -37,7 +37,10 @@ export function mergeSyncStates(local: SyncState, remote: SyncState): SyncState 
   const mergedTags = [...tags.values()].sort((left, right) => (
     left.createdAt - right.createdAt || left.id.localeCompare(right.id)
   ))
-  const mergedProjects = [...projects.values()].sort((left, right) => (
+  const mergedProjects = [...projects.values()].filter((project) => {
+    const tombstone = tombstones.get(project.id)
+    return !tombstone || tombstone.deletedAt < project.updatedAt
+  }).sort((left, right) => (
     Number(right.isDefault) - Number(left.isDefault) || left.createdAt - right.createdAt || left.id.localeCompare(right.id)
   ))
   return { ideas: mergedIdeas, projects: mergedProjects, tags: mergedTags, tombstones: mergedTombstones }

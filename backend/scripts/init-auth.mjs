@@ -28,7 +28,7 @@ if (!values.AUTH_SESSION_SECRET) values.AUTH_SESSION_SECRET = randomBytes(32).to
 values.HOST = process.env.HOST || values.HOST || '0.0.0.0'
 values.PORT = process.env.PORT || values.PORT || '8769'
 values.DATA_FILE = process.env.DATA_FILE || values.DATA_FILE || './data/store.json'
-values.ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS || values.ALLOWED_ORIGINS || 'http://106.55.78.71:8770,http://localhost:10086,http://127.0.0.1:10086,http://localhost:10087,http://127.0.0.1:10087,http://localhost:10088,http://127.0.0.1:10088'
+values.ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS || values.ALLOWED_ORIGINS || 'http://106.55.78.71:8770,http://localhost:10086,http://127.0.0.1:10086,http://localhost:10087,http://127.0.0.1:10087,http://localhost:10088,http://127.0.0.1:10088,http://192.168.112.146:10086,http://192.168.112.146:10087,http://192.168.112.146:10088'
 values.SESSION_TTL_SECONDS = process.env.SESSION_TTL_SECONDS || values.SESSION_TTL_SECONDS || '2592000'
 
 await mkdir(path.dirname(configPath), { recursive: true })

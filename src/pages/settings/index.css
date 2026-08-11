@@ -197,6 +197,16 @@
   gap: 8px;
 }
 
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.managed-project-item {
+  min-width: 0;
+}
+
 .managed-tag {
   min-height: 34px;
   padding: 0 10px;
@@ -207,6 +217,14 @@
   display: flex;
   align-items: center;
   gap: 7px;
+}
+
+.managed-project-tag {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding-left: 12px;
+  padding-right: 8px;
 }
 
 .managed-tag-dot {
@@ -241,6 +259,157 @@
   border-left: 1px solid rgba(var(--border-rgb), .09);
   color: var(--text-disabled);
   font-size: 8px;
+}
+
+.managed-tag-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.managed-tag-action,
+.project-edit-cancel {
+  min-width: 42px;
+  height: 30px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid rgba(var(--border-rgb), .1);
+  border-radius: 9px;
+  color: var(--text-muted);
+  background: rgba(var(--surface-high-rgb), .55);
+  font-size: 9px;
+  font-weight: 760;
+  transition: transform .14s, color .18s, background-color .18s, border-color .18s;
+}
+
+.managed-tag-action:active,
+.project-edit-cancel:active,
+.project-delete-confirm:active,
+.project-edit-save:active { transform: scale(.96); }
+
+.managed-tag-action.danger {
+  color: var(--danger);
+  border-color: rgba(var(--danger-rgb), .18);
+  background: rgba(var(--danger-rgb), .06);
+}
+
+.project-edit-panel,
+.project-delete-panel {
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid rgba(var(--border-rgb), .08);
+  border-radius: 13px;
+  background: rgba(var(--surface-low-rgb), .72);
+  animation: project-panel-in .18s ease-out;
+}
+
+.project-edit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 52px 48px;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.project-edit-input {
+  min-width: 0;
+  height: 34px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  border: 1px solid rgba(var(--accent-rgb), .32);
+  border-radius: 9px;
+  color: var(--text-primary);
+  background: var(--surface-control);
+  font-size: 10px;
+  line-height: normal;
+}
+
+.project-edit-input input,
+.project-edit-input .weui-input {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  line-height: 34px;
+  box-sizing: border-box;
+}
+
+.project-edit-save,
+.project-delete-confirm {
+  width: 100%;
+  height: 34px;
+  min-height: 34px;
+  margin: 0;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9px;
+  color: var(--on-accent);
+  background: var(--accent);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.project-edit-colors {
+  margin-top: 8px;
+  justify-content: flex-start;
+  gap: 11px;
+}
+
+.project-edit-colors .tag-color {
+  width: 30px;
+  height: 30px;
+  border-width: 9px;
+}
+
+.project-edit-colors .tag-color.active {
+  box-shadow: 0 0 0 2px var(--surface-low), 0 0 0 3px var(--tag-color);
+}
+
+.project-delete-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.project-delete-copy {
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.project-delete-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.project-delete-confirm {
+  width: 66px;
+  color: #fff;
+  background: var(--danger);
+}
+
+@keyframes project-panel-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .tag-create {

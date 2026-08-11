@@ -38,7 +38,11 @@ export function mergeStates(serverState, clientState) {
 
   mergedIdeas.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id))
   mergedTombstones.sort((left, right) => right.deletedAt - left.deletedAt || left.id.localeCompare(right.id))
-  return { schemaVersion: 3, ideas: mergedIdeas, projects: [...projects.values()], tags: [...tags.values()], tombstones: mergedTombstones }
+  const mergedProjects = [...projects.values()].filter((project) => {
+    const tombstone = tombstones.get(project.id)
+    return !tombstone || tombstone.deletedAt < project.updatedAt
+  })
+  return { schemaVersion: 3, ideas: mergedIdeas, projects: mergedProjects, tags: [...tags.values()], tombstones: mergedTombstones }
 }
 
 export class JsonSyncStore {

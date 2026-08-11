@@ -9,7 +9,7 @@ import {
   retrySync,
   subscribeSyncStatus
 } from '@/services/sync'
-import { loadIdeaState, loadProjects, loadTags, saveProjects, saveTags } from '@/services/ideaStorage'
+import { loadIdeaState, loadProjects, loadTags, recordIdeaDeletion, saveIdeas, saveProjects, saveTags } from '@/services/ideaStorage'
 import { scheduleSync } from '@/services/sync'
 import { createId } from '@/utils/id'
 import { THEME_OPTIONS, useTheme } from '@/theme'
@@ -43,6 +43,10 @@ export default function SettingsPage() {
   const [projects, setProjects] = useState<IdeaProject[]>(loadProjects)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectColor, setNewProjectColor] = useState<IdeaColorSlot>(1)
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
+  const [editingProjectName, setEditingProjectName] = useState('')
+  const [editingProjectColor, setEditingProjectColor] = useState<IdeaColorSlot>(0)
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
   const [tags, setTags] = useState<IdeaTag[]>(loadTags)
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState<IdeaColorSlot>(0)
@@ -65,10 +69,9 @@ export default function SettingsPage() {
   })[syncStatus.phase], [syncStatus.phase])
 
   const goBack = () => {
-    Taro.navigateBack({
-      delta: 1,
-      fail: () => Taro.reLaunch({ url: '/pages/index/index' })
-    })
+    // H5 在直接打开设置页或热更新后可能没有可靠的页面栈，
+    // 直接重启到主界面可以避免 navigateBack 把当前页再次压回来的情况。
+    Taro.reLaunch({ url: '/pages/index/index' })
   }
 
   const chooseTheme = (option: ThemeDefinition) => {
@@ -177,6 +180,81 @@ export default function SettingsPage() {
     setTimeout(() => setNotice(''), 1500)
   }
 
+  const startProjectEdit = (project: IdeaProject) => {
+    if (project.isDefault) return
+    setDeletingProjectId(null)
+    setEditingProjectId(project.id)
+    setEditingProjectName(project.name)
+    setEditingProjectColor(project.colorSlot)
+  }
+
+  const cancelProjectEdit = () => {
+    setEditingProjectId(null)
+    setEditingProjectName('')
+  }
+
+  const saveProjectEdit = () => {
+    if (!editingProjectId) return
+    const project = projects.find((item) => item.id === editingProjectId)
+    const name = editingProjectName.trim()
+    if (!project || project.isDefault || !name) return
+    if (projects.some((item) => item.id !== project.id && item.name.toLowerCase() === name.toLowerCase())) {
+      setNotice('已经有同名项目了')
+      setTimeout(() => setNotice(''), 1500)
+      return
+    }
+
+    const now = Date.now()
+    const nextProjects = projects.map((item) => item.id === project.id
+      ? { ...item, name: name.slice(0, 16), colorSlot: editingProjectColor, updatedAt: now }
+      : item)
+    const currentIdeas = loadIdeaState().ideas
+    const nextIdeas = currentIdeas.map((idea) => idea.projectId === project.id
+      ? { ...idea, colorSlot: editingProjectColor, updatedAt: editingProjectColor !== project.colorSlot ? now : idea.updatedAt }
+      : idea)
+
+    setProjects(nextProjects)
+    saveProjects(nextProjects)
+    if (editingProjectColor !== project.colorSlot) saveIdeas(nextIdeas)
+    scheduleSync()
+    Taro.eventCenter.trigger('idea-taxonomy-updated')
+    cancelProjectEdit()
+    setNotice(`已更新项目「${name.slice(0, 16)}」`)
+    setTimeout(() => setNotice(''), 1500)
+  }
+
+  const requestProjectDelete = (project: IdeaProject) => {
+    if (project.isDefault) return
+    setEditingProjectId(null)
+    setDeletingProjectId(project.id)
+  }
+
+  const cancelProjectDelete = () => setDeletingProjectId(null)
+
+  const deleteProject = () => {
+    if (!deletingProjectId) return
+    const project = projects.find((item) => item.id === deletingProjectId)
+    const defaultProject = projects.find((item) => item.isDefault)
+    if (!project || project.isDefault || !defaultProject) return
+
+    const now = Date.now()
+    const nextProjects = projects.filter((item) => item.id !== project.id)
+    const currentIdeas = loadIdeaState().ideas
+    const nextIdeas = currentIdeas.map((idea) => idea.projectId === project.id
+      ? { ...idea, projectId: defaultProject.id, colorSlot: defaultProject.colorSlot, updatedAt: now }
+      : idea)
+
+    setProjects(nextProjects)
+    saveProjects(nextProjects)
+    saveIdeas(nextIdeas)
+    recordIdeaDeletion(project.id, now)
+    scheduleSync()
+    Taro.eventCenter.trigger('idea-taxonomy-updated')
+    setDeletingProjectId(null)
+    setNotice(`已删除项目「${project.name}」，关联任务已移到默认项目`)
+    setTimeout(() => setNotice(''), 1800)
+  }
+
   return (
     <View className='settings-stage theme-root' style={themeStyle}>
       <View className='settings-shell'>
@@ -252,19 +330,75 @@ export default function SettingsPage() {
           <View className='settings-section'>
             <View className='section-heading'>
               <Text className='section-title'>项目</Text>
-              <Text className='section-copy'>每个任务只能属于一个项目，任务主色跟随项目</Text>
+              <Text className='section-copy'>每个任务只能属于一个项目，任务主色跟随项目；自定义项目可编辑或删除</Text>
             </View>
             <View className='tag-manager project-manager'>
-              <View className='tag-list'>
+              <View className='project-list'>
                 {projects.map((project) => (
-                  <View
-                    key={project.id}
-                    className='managed-tag'
-                    style={{ '--tag-color': theme.ideaPalette[project.colorSlot] } as CSSProperties}
-                  >
-                    <View className='managed-project-radio'><View /></View>
-                    <Text className='managed-tag-name'>{project.name}</Text>
-                    {project.isDefault && <Text className='managed-tag-default'>默认选项</Text>}
+                  <View key={project.id} className='managed-project-item'>
+                    <View
+                      className='managed-tag managed-project-tag'
+                      style={{ '--tag-color': theme.ideaPalette[project.colorSlot] } as CSSProperties}
+                    >
+                      <View className='managed-project-radio'><View /></View>
+                      <Text className='managed-tag-name'>{project.name}</Text>
+                      {project.isDefault && <Text className='managed-tag-default'>默认选项</Text>}
+                      {!project.isDefault && (
+                        <View className='managed-tag-actions'>
+                          <View
+                            className='managed-tag-action'
+                            ariaRole='button'
+                            ariaLabel={`编辑项目 ${project.name}`}
+                            onClick={() => startProjectEdit(project)}
+                          >编辑</View>
+                          <View
+                            className='managed-tag-action danger'
+                            ariaRole='button'
+                            ariaLabel={`删除项目 ${project.name}`}
+                            onClick={() => requestProjectDelete(project)}
+                          >删除</View>
+                        </View>
+                      )}
+                    </View>
+
+                    {editingProjectId === project.id && (
+                      <View className='project-edit-panel'>
+                        <View className='project-edit-row'>
+                          <Input
+                            className='project-edit-input'
+                            value={editingProjectName}
+                            maxlength={16}
+                            ariaLabel='编辑项目名称'
+                            onInput={(event) => setEditingProjectName(event.detail.value)}
+                            onConfirm={saveProjectEdit}
+                          />
+                          <Button className='project-edit-save' onClick={saveProjectEdit}>保存</Button>
+                          <View className='project-edit-cancel' ariaRole='button' onClick={cancelProjectEdit}>取消</View>
+                        </View>
+                        <View className='tag-color-list project-edit-colors'>
+                          {theme.ideaPalette.map((_, index) => (
+                            <View
+                              key={index}
+                              className={`tag-color ${editingProjectColor === index ? 'active' : ''}`}
+                              style={{ '--tag-color': theme.ideaPalette[index] } as CSSProperties}
+                              ariaRole='button'
+                              ariaLabel={`选择项目颜色 ${index + 1}`}
+                              onClick={() => setEditingProjectColor(index as IdeaColorSlot)}
+                            />
+                          ))}
+                        </View>
+                      </View>
+                    )}
+
+                    {deletingProjectId === project.id && (
+                      <View className='project-delete-panel'>
+                        <Text className='project-delete-copy'>删除后，关联任务会移到默认项目</Text>
+                        <View className='project-delete-actions'>
+                          <View className='project-edit-cancel' ariaRole='button' onClick={cancelProjectDelete}>取消</View>
+                          <Button className='project-delete-confirm' onClick={deleteProject}>确认删除</Button>
+                        </View>
+                      </View>
+                    )}
                   </View>
                 ))}
               </View>
