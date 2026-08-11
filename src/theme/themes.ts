@@ -55,6 +55,11 @@ interface CanvasColors {
   tooltipText: string
 }
 
+interface ThemeEffects {
+  imageIconFilter: string
+  disabledControlOpacity: string
+}
+
 export interface ThemeDefinition {
   id: ThemeId
   name: string
@@ -63,6 +68,7 @@ export interface ThemeDefinition {
   priorities: Record<PriorityKey, string>
   ideaPalette: IdeaPalette
   canvas: CanvasColors
+  effects: ThemeEffects
 }
 
 export type ThemeStyle = CSSProperties & Record<`--${string}`, string>
@@ -117,15 +123,19 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     priorities: {
       inbox: '#969eae',
       urgent: '#ff5b61',
-      important: '#ffab58',
-      quick: '#69a8ff'
+      important: '#69a8ff',
+      quick: '#ffab58'
     },
     ideaPalette: ['#9da9ff', '#d5ff6d', '#7bd9d4', '#ffba78', '#c8a3ff', '#7ec8ff', '#ff91ad'],
     canvas: {
-      linkRgb: '135, 148, 179',
+      linkRgb: '158, 178, 116',
       tooltipBackground: 'rgba(15, 18, 24, 0.94)',
       tooltipBorder: 'rgba(255, 255, 255, 0.07)',
       tooltipText: '#dfe3ea'
+    },
+    effects: {
+      imageIconFilter: 'none',
+      disabledControlOpacity: '.28'
     }
   },
   'twilight-violet': {
@@ -175,8 +185,8 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     priorities: {
       inbox: '#a7a0b8',
       urgent: '#ff6b81',
-      important: '#f2b86b',
-      quick: '#77b7ff'
+      important: '#77b7ff',
+      quick: '#f2b86b'
     },
     ideaPalette: ['#a78bfa', '#c4b5fd', '#7dd3fc', '#67e8f9', '#f0abfc', '#fdba74', '#fb7185'],
     canvas: {
@@ -184,6 +194,10 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
       tooltipBackground: 'rgba(21, 17, 31, 0.94)',
       tooltipBorder: 'rgba(238, 232, 255, 0.08)',
       tooltipText: '#eee8fa'
+    },
+    effects: {
+      imageIconFilter: 'none',
+      disabledControlOpacity: '.28'
     }
   },
   'paper-dawn': {
@@ -233,8 +247,8 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     priorities: {
       inbox: '#6d7787',
       urgent: '#d8465c',
-      important: '#b26a16',
-      quick: '#3f72c8'
+      important: '#3f72c8',
+      quick: '#b26a16'
     },
     ideaPalette: ['#6e7ff2', '#f2b544', '#39ab8e', '#e98645', '#9a6fe3', '#4a96d9', '#e45f87'],
     canvas: {
@@ -242,6 +256,10 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
       tooltipBackground: 'rgba(42, 48, 59, 0.94)',
       tooltipBorder: 'rgba(255, 255, 255, 0.12)',
       tooltipText: '#f8f9fb'
+    },
+    effects: {
+      imageIconFilter: 'brightness(.30) saturate(.55) contrast(1.08)',
+      disabledControlOpacity: '.48'
     }
   }
 }
@@ -256,7 +274,7 @@ export function isThemeId(value: unknown): value is ThemeId {
 }
 
 export function getThemeStyle(theme: ThemeDefinition): ThemeStyle {
-  const { colors } = theme
+  const { colors, effects } = theme
   return {
     '--stage-bg': colors.stage,
     '--page-bg': colors.page,
@@ -295,7 +313,9 @@ export function getThemeStyle(theme: ThemeDefinition): ThemeStyle {
     '--glass-brightness': colors.glassBrightness,
     '--glass-contrast': colors.glassContrast,
     '--danger': colors.danger,
-    '--danger-rgb': colors.dangerRgb
+    '--danger-rgb': colors.dangerRgb,
+    '--image-icon-filter': effects.imageIconFilter,
+    '--disabled-control-opacity': effects.disabledControlOpacity
   }
 }
 

@@ -79,6 +79,7 @@ export default function DetailSheet({ idea, projects, tags, open, onClose, onPri
         <Textarea
           className='detail-body-input'
           value={details}
+          autoHeight
           maxlength={-1}
           ariaLabel='任务详情'
           placeholder='补充步骤、背景或任何小细节...'

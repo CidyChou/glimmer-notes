@@ -135,7 +135,10 @@
 
 .detail-body-input {
   width: 100%;
-  height: 70px;
+  height: auto;
+  min-height: 70px;
+  max-height: 180px;
+  overflow-y: auto;
   padding: 0;
   color: var(--text-soft);
   background: transparent;
@@ -146,7 +149,10 @@
 
 .detail-body-input .taro-textarea {
   width: 100%;
-  height: 100%;
+  height: auto;
+  min-height: 70px;
+  max-height: 180px;
+  overflow-y: auto;
   padding: 0;
   border: 0;
   outline: 0;
@@ -431,7 +437,8 @@
 
 @media (max-width: 360px) {
   .detail-sheet { left: 8px; right: 8px; padding-left: 12px; padding-right: 12px; }
-  .detail-body-input { height: 58px; }
+  .detail-body-input,
+  .detail-body-input .taro-textarea { min-height: 58px; }
   .detail-save-btn { min-width: 104px; padding: 0 14px; }
 }
 

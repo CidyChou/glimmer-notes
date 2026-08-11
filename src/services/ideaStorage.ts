@@ -268,3 +268,14 @@ export function recordIdeaDeletion(id: string, deletedAt: number): void {
     console.warn('[IdeaSpace] save deletion marker failed', error)
   }
 }
+
+export function removeIdeaDeletion(id: string): void {
+  try {
+    Taro.setStorageSync(
+      TOMBSTONE_STORAGE_KEY,
+      loadTombstones().filter((item) => item.id !== id)
+    )
+  } catch (error) {
+    console.warn('[IdeaSpace] remove deletion marker failed', error)
+  }
+}

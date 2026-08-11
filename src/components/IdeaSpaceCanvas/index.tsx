@@ -1,14 +1,17 @@
 import Taro from '@tarojs/taro'
 import { Canvas } from '@tarojs/components'
 import { useEffect, useRef } from 'react'
+import { PRIORITY_ORDER } from '@/constants/priorities'
 import { getIdeaTitle } from '@/utils/ideaText'
 import type { Idea, IdeaDropTarget, PriorityKey } from '@/types/idea'
 import { useTheme } from '@/theme'
 import './index.css'
 
 const CANVAS_ID = 'idea-space-canvas'
-const NON_INBOX_PRIORITIES: PriorityKey[] = ['urgent', 'important', 'quick']
+const NON_INBOX_PRIORITIES: PriorityKey[] = PRIORITY_ORDER.filter((priority) => priority !== 'inbox')
 const DRAG_HOLD_MS = 320
+const LINK_DISTANCE = 112
+const LINK_MAX_OPACITY = 0.24
 
 type CanvasLike = any
 type Context2D = any
@@ -100,6 +103,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
   const pointerRef = useRef<Point>({ x: -999, y: -999 })
   const gestureRef = useRef<GestureState | null>(null)
   const dragIdRef = useRef<string | null>(null)
+  const revealedIdRef = useRef<string | null>(null)
   const dockRectsRef = useRef<DockRect[]>([])
   const rafRef = useRef<number | null>(null)
   const h5CleanupRef = useRef<(() => void) | null>(null)
@@ -141,6 +145,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
 
   const syncNodes = () => {
     const ids = new Set(ideasRef.current.map((idea) => idea.id))
+    if (revealedIdRef.current && !ids.has(revealedIdRef.current)) revealedIdRef.current = null
     nodesRef.current = nodesRef.current.filter((node) => ids.has(node.id))
     ideasRef.current.forEach((idea, index) => {
       if (!nodesRef.current.some((node) => node.id === idea.id)) {
@@ -185,9 +190,10 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
         const dx = A.x - B.x
         const dy = A.y - B.y
         const distance = Math.hypot(dx, dy)
-        if (distance < 112) {
-          ctx.strokeStyle = `rgba(${currentTheme.canvas.linkRgb},${(1 - distance / 112) * 0.11})`
-          ctx.lineWidth = 0.7
+        if (distance < LINK_DISTANCE) {
+          const proximity = 1 - distance / LINK_DISTANCE
+          ctx.strokeStyle = `rgba(${currentTheme.canvas.linkRgb},${Math.sqrt(proximity) * LINK_MAX_OPACITY})`
+          ctx.lineWidth = 1
           ctx.beginPath()
           ctx.moveTo(A.x, A.y)
           ctx.lineTo(B.x, B.y)
@@ -248,7 +254,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
         ctx.globalAlpha = 1
       }
 
-      if (near || dragging) {
+      if (near || dragging || revealedIdRef.current === node.id) {
         const title = getIdeaTitle(idea.text)
         const text = title.length > 16 ? `${title.slice(0, 16)}…` : title
         ctx.font = '11px sans-serif'
@@ -465,6 +471,7 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
     const point = getLocalPoint(clientX, clientY)
     pointerRef.current = point
     const hit = hitNode(point.x, point.y)
+    if (!hit) revealedIdRef.current = null
     const gesture: GestureState = {
       start: point,
       hitId: hit?.id || null,
@@ -533,7 +540,12 @@ export default function IdeaSpaceCanvas({ ideas, active, onOpenIdea, onAssignPri
       dragIdRef.current = null
       callbacksRef.current.onDragUiChange(false, null)
     } else if (gesture.hitId && !gesture.pan && !gesture.moved) {
-      callbacksRef.current.onOpenIdea(gesture.hitId)
+      if (revealedIdRef.current === gesture.hitId) {
+        revealedIdRef.current = null
+        callbacksRef.current.onOpenIdea(gesture.hitId)
+      } else {
+        revealedIdRef.current = gesture.hitId
+      }
     }
 
     gestureRef.current = null

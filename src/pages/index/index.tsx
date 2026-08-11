@@ -1,6 +1,6 @@
 import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Image, Input, Text, View } from '@tarojs/components'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PRIORITY_META } from '@/constants/priorities'
 import BottomBar from '@/components/BottomBar'
 import ComposerSheet from '@/components/ComposerSheet'
@@ -8,6 +8,14 @@ import DetailSheet from '@/components/DetailSheet'
 import IdeaSpaceCanvas from '@/components/IdeaSpaceCanvas'
 import OrganizeView from '@/components/OrganizeView'
 import { loadIdeaState, recordIdeaDeletion, saveIdeas, saveProjects } from '@/services/ideaStorage'
+import {
+  getIdeaHistoryState,
+  recordIdeaChange,
+  redoIdeaChange,
+  subscribeIdeaHistory,
+  undoIdeaChange
+} from '@/services/ideaHistory'
+import type { IdeaHistoryState } from '@/services/ideaHistory'
 import { getSyncStatus, scheduleSync, subscribeSyncData, subscribeSyncStatus } from '@/services/sync'
 import { createId } from '@/utils/id'
 import { copyText } from '@/utils/clipboard'
@@ -18,8 +26,9 @@ import type { Idea, IdeaDropTarget, IdeaProject, IdeaTag, PriorityKey } from '@/
 import { findIdeaProject, findIdeaTags, findProjectById, toggleTagId } from '@/utils/tags'
 import { useTheme } from '@/theme'
 import type { IdeaColorSlot } from '@/theme'
-import searchIcon from '@/assets/icons/search.svg'
+import searchIcon from '@/assets/icons/search.png'
 import settingsIcon from '@/assets/icons/settings.png'
+import historyArrowIcon from '@/assets/icons/history-arrow.png'
 import './index.css'
 
 type Mode = 'space' | 'organize'
@@ -42,12 +51,16 @@ export default function IndexPage() {
   const [bucketIndex, setBucketIndex] = useState(0)
   const [dragUi, setDragUi] = useState<{ active: boolean; hover: IdeaDropTarget | null }>({ active: false, hover: null })
   const [toast, setToast] = useState('')
+  const [historyState, setHistoryState] = useState<IdeaHistoryState>(getIdeaHistoryState)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => subscribeSyncData((nextIdeas, nextTags, nextProjects) => {
     setIdeas(nextIdeas)
     setTags(nextTags)
     setProjects(nextProjects)
   }), [])
+
+  useEffect(() => subscribeIdeaHistory(setHistoryState), [])
 
   useEffect(() => {
     const refreshTaxonomy = () => {
@@ -60,6 +73,10 @@ export default function IndexPage() {
     return () => {
       Taro.eventCenter.off('idea-taxonomy-updated', refreshTaxonomy)
     }
+  }, [])
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
   }, [])
 
   useDidShow(() => {
@@ -103,32 +120,48 @@ export default function IndexPage() {
   }
 
   const flash = (message: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToast(message)
-    setTimeout(() => setToast(''), 1350)
+    toastTimerRef.current = setTimeout(() => {
+      setToast('')
+      toastTimerRef.current = null
+    }, 1350)
   }
 
   const assignPriority = (id: string, priority: PriorityKey) => {
+    const current = ideas.find((idea) => idea.id === id)
+    if (!current || current.priority === priority) return
     const updatedAt = Date.now()
-    commitIdeas(ideas.map((idea) => idea.id === id ? { ...idea, priority, updatedAt } : idea))
+    const after = { ...current, priority, updatedAt }
+    commitIdeas(ideas.map((idea) => idea.id === id ? after : idea))
+    recordIdeaChange({ ideaId: id, before: current, after, label: `移动到「${PRIORITY_META[priority].name}」` })
     flash(`已放入「${PRIORITY_META[priority].name}」`)
   }
 
   const archiveIdea = (id: string) => {
+    const current = ideas.find((idea) => idea.id === id)
+    if (!current || current.archivedAt !== null) return
     const updatedAt = Date.now()
-    commitIdeas(ideas.map((idea) => idea.id === id ? { ...idea, archivedAt: updatedAt, updatedAt } : idea))
+    const after = { ...current, archivedAt: updatedAt, updatedAt }
+    commitIdeas(ideas.map((idea) => idea.id === id ? after : idea))
+    recordIdeaChange({ ideaId: id, before: current, after, label: '归档任务' })
     setSelectedId(null)
     flash('已归档，可在设置中查看')
   }
 
   const assignProject = (id: string, projectId: string) => {
+    const current = ideas.find((idea) => idea.id === id)
     const project = findProjectById(projectId, projects)
+    if (!current || current.projectId === project.id) return
     const updatedAt = Date.now()
-    commitIdeas(ideas.map((idea) => idea.id === id ? {
-      ...idea,
+    const after = {
+      ...current,
       projectId: project.id,
       colorSlot: project.colorSlot,
       updatedAt
-    } : idea))
+    }
+    commitIdeas(ideas.map((idea) => idea.id === id ? after : idea))
+    recordIdeaChange({ ideaId: id, before: current, after, label: `移动到「${project.name}」` })
     flash(`已归入「${project.name}」`)
   }
 
@@ -137,12 +170,15 @@ export default function IndexPage() {
     if (!tag) return
     const updatedAt = Date.now()
     const current = ideas.find((idea) => idea.id === id)
+    if (!current) return
     const removing = current?.tagIds.includes(tagId)
-    commitIdeas(ideas.map((idea) => idea.id === id ? {
-      ...idea,
-      tagIds: toggleTagId(idea.tagIds, tagId),
+    const after = {
+      ...current,
+      tagIds: toggleTagId(current.tagIds, tagId),
       updatedAt
-    } : idea))
+    }
+    commitIdeas(ideas.map((idea) => idea.id === id ? after : idea))
+    recordIdeaChange({ ideaId: id, before: current, after, label: removing ? `移除标签「${tag.name}」` : `添加标签「${tag.name}」` })
     flash(removing ? `已移除「${tag.name}」` : `已添加「${tag.name}」`)
   }
 
@@ -173,6 +209,7 @@ export default function IndexPage() {
       archivedAt: null
     }
     commitIdeas([idea, ...ideas])
+    recordIdeaChange({ ideaId: idea.id, before: null, after: idea, label: `新建「${draftTitle.trim()}」` })
     setDraftTitle('')
     setDraftDetails('')
     setDraftProjectId(DEFAULT_PROJECT_ID)
@@ -205,12 +242,17 @@ export default function IndexPage() {
     Taro.eventCenter.trigger('idea-taxonomy-updated')
 
     if (selectedId) {
-      commitIdeas(ideas.map((idea) => idea.id === selectedId ? {
-        ...idea,
+      const current = ideas.find((idea) => idea.id === selectedId)
+      const after = current ? {
+        ...current,
         projectId: project.id,
         colorSlot: project.colorSlot,
         updatedAt: now
-      } : idea))
+      } : null
+      if (current && after) {
+        commitIdeas(ideas.map((idea) => idea.id === selectedId ? after : idea))
+        recordIdeaChange({ ideaId: selectedId, before: current, after, label: `移动到「${project.name}」` })
+      }
     } else {
       scheduleSync()
     }
@@ -220,25 +262,52 @@ export default function IndexPage() {
 
   const saveSelected = (title: string, details: string) => {
     if (!selectedId || !title.trim()) return
+    const current = ideas.find((idea) => idea.id === selectedId)
+    if (!current) return
     const text = composeIdeaText(title, details)
     const updatedAt = Date.now()
-    commitIdeas(ideas.map((idea) => idea.id === selectedId ? { ...idea, text, updatedAt } : idea))
+    const after = { ...current, text, updatedAt }
+    commitIdeas(ideas.map((idea) => idea.id === selectedId ? after : idea))
+    recordIdeaChange({ ideaId: selectedId, before: current, after, label: '编辑任务' })
     setSelectedId(null)
     flash('修改已保存')
   }
 
   const togglePin = () => {
     if (!selectedId) return
+    const current = ideas.find((idea) => idea.id === selectedId)
+    if (!current) return
     const updatedAt = Date.now()
-    commitIdeas(ideas.map((idea) => idea.id === selectedId ? { ...idea, pinned: !idea.pinned, updatedAt } : idea))
+    const after = { ...current, pinned: !current.pinned, updatedAt }
+    commitIdeas(ideas.map((idea) => idea.id === selectedId ? after : idea))
+    recordIdeaChange({ ideaId: selectedId, before: current, after, label: after.pinned ? '收藏任务' : '取消收藏' })
+    flash(after.pinned ? '已收藏' : '已取消收藏')
   }
 
   const deleteSelected = () => {
     if (!selectedId) return
+    const deletedIdea = ideas.find((idea) => idea.id === selectedId)
+    if (!deletedIdea) return
     recordIdeaDeletion(selectedId, Date.now())
     commitIdeas(ideas.filter((idea) => idea.id !== selectedId))
+    recordIdeaChange({ ideaId: selectedId, before: deletedIdea, after: null, label: `删除「${deletedIdea.text.split('\n')[0] || '任务'}」` })
     setSelectedId(null)
     flash('已删除')
+  }
+
+  const applyHistory = (direction: 'undo' | 'redo') => {
+    const result = direction === 'undo'
+      ? undoIdeaChange({ ideas, projects, tags })
+      : redoIdeaChange({ ideas, projects, tags })
+    if (!result) return
+    setIdeas(result.ideas)
+    scheduleSync()
+    flash(`${direction === 'undo' ? '已撤回' : '已重做'}：${result.label}`)
+  }
+
+  const closeSearch = () => {
+    setQuery('')
+    setSearchOpen(false)
   }
 
   const hasSheetOpen = composerOpen || !!selectedId
@@ -255,13 +324,32 @@ export default function IndexPage() {
             <Text className='title'>拾光笔记</Text>
           </View>
           <View className='topbar-actions'>
+            <View className='history-controls' ariaLabel='任务历史'>
+              <Button
+                className={`history-btn history-undo ${historyState.canUndo ? 'enabled' : 'disabled'}`}
+                disabled={!historyState.canUndo || dragUi.active || searchOpen || hasSheetOpen}
+                ariaLabel={historyState.undoLabel ? `撤回：${historyState.undoLabel}` : '撤回上一步操作'}
+                onClick={() => applyHistory('undo')}
+              >
+                <Image className='history-icon' src={historyArrowIcon} mode='scaleToFill' />
+              </Button>
+              <View className='history-divider' />
+              <Button
+                className={`history-btn history-redo ${historyState.canRedo ? 'enabled' : 'disabled'}`}
+                disabled={!historyState.canRedo || dragUi.active || searchOpen || hasSheetOpen}
+                ariaLabel={historyState.redoLabel ? `重做：${historyState.redoLabel}` : '重做下一步操作'}
+                onClick={() => applyHistory('redo')}
+              >
+                <Image className='history-icon history-redo-icon' src={historyArrowIcon} mode='scaleToFill' />
+              </Button>
+            </View>
             <Button
               className='icon-btn search-btn'
               ariaLabel='搜索想法'
-              onClick={() => setSearchOpen((open) => !open)}
+              onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}
             >
               <View className='search-icon-shell'>
-                <Image className='search-icon' src={searchIcon} mode='aspectFit' />
+                <Image className='search-icon' src={searchIcon} mode='scaleToFill' />
               </View>
             </Button>
             <Button
@@ -314,6 +402,12 @@ export default function IndexPage() {
           onModeChange={setMode}
         />
 
+        <View
+          className={`search-dismiss ${searchOpen ? 'show' : ''}`}
+          ariaRole='button'
+          ariaLabel='关闭搜索'
+          onClick={closeSearch}
+        />
         <View className={`search-wrap ${searchOpen ? 'show' : ''}`}>
           <View className='search-glyph search-field-glyph' />
           <Input
@@ -322,8 +416,9 @@ export default function IndexPage() {
             focus={searchOpen}
             placeholder='搜索任务、项目或标签…'
             onInput={(event) => setQuery(event.detail.value)}
+            onBlur={closeSearch}
           />
-          <Text className='search-close' onClick={() => { setQuery(''); setSearchOpen(false) }}>取消</Text>
+          <Text className='search-close' onClick={closeSearch}>取消</Text>
         </View>
 
         <View
@@ -365,7 +460,7 @@ export default function IndexPage() {
           />
         )}
 
-        <View className={`toast ${toast ? 'show' : ''}`}>{toast}</View>
+        <View className={`toast ${toast ? 'show' : ''}`}><Text>{toast}</Text></View>
       </View>
     </View>
   )

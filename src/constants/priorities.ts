@@ -6,7 +6,7 @@ export interface PriorityMeta {
   hint: string
 }
 
-export const PRIORITY_ORDER: PriorityKey[] = ['inbox', 'urgent', 'important', 'quick']
+export const PRIORITY_ORDER: PriorityKey[] = ['inbox', 'urgent', 'quick', 'important']
 
 export const PRIORITY_META: Record<PriorityKey, PriorityMeta> = {
   inbox: {

@@ -1,6 +1,7 @@
 import Taro from '@tarojs/taro'
 import { isDemoOnlyIdeaSet } from '@/constants/demoSeeds'
 import { loadIdeaState, saveIdeaState } from '@/services/ideaStorage'
+import { reconcileIdeaHistory } from '@/services/ideaHistory'
 import { mergeSyncStates } from '@/services/syncMerge'
 import { DEFAULT_PROJECT_ID, LEGACY_PROJECT_TAG_ID } from '@/types/idea'
 import type { Idea, IdeaProject, IdeaTag, IdeaTombstone } from '@/types/idea'
@@ -117,6 +118,7 @@ function applyServerState(remote: SyncResponse, replaceLocal = false) {
   })
   if (replaceLocal) {
     saveIdeaState(remoteIdeas, remote.tombstones, remoteTags, remoteProjects)
+    reconcileIdeaHistory(remoteIdeas, remoteProjects, remoteTags, { replaceLocal: true })
     dataListeners.forEach((listener) => listener(remoteIdeas, remoteTags, remoteProjects))
     return
   }
@@ -125,6 +127,7 @@ function applyServerState(remote: SyncResponse, replaceLocal = false) {
     { ideas: remoteIdeas, projects: remoteProjects, tags: remoteTags, tombstones: remote.tombstones }
   )
   saveIdeaState(merged.ideas, merged.tombstones, merged.tags, merged.projects)
+  reconcileIdeaHistory(merged.ideas, merged.projects, merged.tags)
   dataListeners.forEach((listener) => listener(merged.ideas, merged.tags, merged.projects))
 }
 

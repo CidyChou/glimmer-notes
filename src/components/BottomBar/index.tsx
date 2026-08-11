@@ -1,9 +1,10 @@
 import { Button, Text, View } from '@tarojs/components'
 import PriorityTargets from '@/components/PriorityTargets'
+import { PRIORITY_ORDER } from '@/constants/priorities'
 import type { IdeaDropTarget, PriorityKey } from '@/types/idea'
 import './index.css'
 
-const SPACE_TARGETS: PriorityKey[] = ['urgent', 'important', 'quick']
+const SPACE_TARGETS: PriorityKey[] = PRIORITY_ORDER.filter((priority) => priority !== 'inbox')
 
 interface Props {
   mode: 'space' | 'organize'

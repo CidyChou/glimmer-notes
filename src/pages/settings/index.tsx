@@ -7,9 +7,11 @@ import {
   loginAndSync,
   logoutSync,
   retrySync,
+  subscribeSyncData,
   subscribeSyncStatus
 } from '@/services/sync'
 import { loadIdeaState, loadProjects, loadTags, recordIdeaDeletion, saveIdeas, saveProjects, saveTags } from '@/services/ideaStorage'
+import { reconcileIdeaHistory } from '@/services/ideaHistory'
 import { scheduleSync } from '@/services/sync'
 import { createId } from '@/utils/id'
 import { THEME_OPTIONS, useTheme } from '@/theme'
@@ -59,6 +61,12 @@ export default function SettingsPage() {
   })
 
   useEffect(() => subscribeSyncStatus(setSyncStatus), [])
+
+  useEffect(() => subscribeSyncData((nextIdeas, nextTags, nextProjects) => {
+    setTags(nextTags)
+    setProjects(nextProjects)
+    setArchivedCount(nextIdeas.filter((idea) => idea.archivedAt !== null).length)
+  }), [])
 
   const syncTitle = useMemo(() => ({
     'signed-out': '仅本地保存',
@@ -216,6 +224,7 @@ export default function SettingsPage() {
     setProjects(nextProjects)
     saveProjects(nextProjects)
     if (editingProjectColor !== project.colorSlot) saveIdeas(nextIdeas)
+    reconcileIdeaHistory(nextIdeas, nextProjects, loadTags())
     scheduleSync()
     Taro.eventCenter.trigger('idea-taxonomy-updated')
     cancelProjectEdit()
@@ -247,6 +256,7 @@ export default function SettingsPage() {
     setProjects(nextProjects)
     saveProjects(nextProjects)
     saveIdeas(nextIdeas)
+    reconcileIdeaHistory(nextIdeas, nextProjects, loadTags())
     recordIdeaDeletion(project.id, now)
     scheduleSync()
     Taro.eventCenter.trigger('idea-taxonomy-updated')

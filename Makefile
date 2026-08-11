@@ -13,7 +13,10 @@ SSH_OPTS ?= -o BatchMode=yes -o ConnectTimeout=10
 SSH_BIN ?= /usr/bin/ssh
 RSYNC_RSH ?= /usr/bin/ssh $(SSH_OPTS)
 
-.PHONY: up_client up_backend up_106 build_client test_backend
+.PHONY: dev up_client up_backend up_106 build_client test_backend
+
+dev:
+	npm run dev:h5
 
 build_client:
 	npm ci

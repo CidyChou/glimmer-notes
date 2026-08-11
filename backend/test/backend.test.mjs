@@ -89,6 +89,35 @@ test('legacy single tags migrate to a default project plus multi-tag array', () 
   assert.deepEqual(merged.ideas[0].tagIds, ['tag-legacy'])
 })
 
+test('tags sync by id and keep the newest version', () => {
+  const merged = mergeStates(
+    {
+      ideas: [],
+      projects: [],
+      tags: [{ id: 'tag-focus', name: '专注', colorSlot: 0, createdAt: 10, updatedAt: 10 }],
+      tombstones: []
+    },
+    {
+      ideas: [],
+      projects: [],
+      tags: [
+        { id: 'tag-focus', name: '深度工作', colorSlot: 4, createdAt: 10, updatedAt: 20 },
+        { id: 'tag-home', name: '生活', colorSlot: 2, createdAt: 20, updatedAt: 20 }
+      ],
+      tombstones: []
+    }
+  )
+
+  assert.equal(merged.tags.length, 2)
+  assert.deepEqual(merged.tags.find((tag) => tag.id === 'tag-focus'), {
+    id: 'tag-focus',
+    name: '深度工作',
+    colorSlot: 4,
+    createdAt: 10,
+    updatedAt: 20
+  })
+})
+
 test('session tokens are signed and expire', () => {
   const token = createSessionToken('secret', 1_000, 10)
   assert.equal(verifySessionToken(token, 'secret', 10_000).expiresAt, 11_000)

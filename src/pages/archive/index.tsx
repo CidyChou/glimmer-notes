@@ -3,6 +3,7 @@ import { Button, Text, View } from '@tarojs/components'
 import { useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { loadIdeaState, saveIdeas } from '@/services/ideaStorage'
+import { recordIdeaChange } from '@/services/ideaHistory'
 import { scheduleSync } from '@/services/sync'
 import { copyText } from '@/utils/clipboard'
 import { formatDay, formatTime } from '@/utils/date'
@@ -32,10 +33,14 @@ export default function ArchivePage() {
   }
 
   const restore = (id: string) => {
+    const current = ideas.find((idea) => idea.id === id)
+    if (!current || current.archivedAt === null) return
     const updatedAt = Date.now()
-    const next = ideas.map((idea) => idea.id === id ? { ...idea, archivedAt: null, updatedAt } : idea)
+    const after = { ...current, archivedAt: null, updatedAt }
+    const next = ideas.map((idea) => idea.id === id ? after : idea)
     setIdeas(next)
     saveIdeas(next)
+    recordIdeaChange({ ideaId: id, before: current, after, label: `恢复「${current.text.split('\n')[0] || '任务'}」` })
     scheduleSync()
     flash('任务已恢复')
   }
