@@ -91,7 +91,7 @@ npm run test:backend
 node backend/main.mjs
 ```
 
-H5 默认连接 `http://127.0.0.1:8769`，可在构建时通过 `TARO_APP_API_BASE_URL` 覆盖。
+H5 默认连接 106 服务器的 `http://106.55.78.71:8769`，本地执行 `npm run dev:h5` 时也使用这套云端数据。仅在需要临时切换后端时，才通过构建时变量 `TARO_APP_API_BASE_URL` 覆盖。
 
 ## 部署到 106 服务器
 

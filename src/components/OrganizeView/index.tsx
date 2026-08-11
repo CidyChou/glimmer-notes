@@ -42,6 +42,7 @@ interface SortUi {
 interface GestureState {
   idea: Idea
   source: GestureSource
+  input: 'touch' | 'mouse'
   startX: number
   startY: number
   activated: boolean
@@ -77,6 +78,12 @@ function bucketIdeas(ideas: Idea[], priority: PriorityKey) {
 }
 
 function eventPoint(event: any, changed = false) {
+  const nativeEvent = event?.nativeEvent || event
+  const directX = nativeEvent?.clientX ?? nativeEvent?.pageX
+  const directY = nativeEvent?.clientY ?? nativeEvent?.pageY
+  if (typeof directX === 'number' && typeof directY === 'number') {
+    return { x: directX, y: directY }
+  }
   const touches = changed ? event.changedTouches : event.touches
   const touch = touches?.[0] || event.changedTouches?.[0] || event.touches?.[0]
   if (!touch) return null
@@ -148,6 +155,7 @@ function Timeline({
             {showDay && <View className='day-label'>{day}</View>}
             <View
               className={`idea-row ${isSource ? 'sort-source' : ''}`}
+              id={`organize-row-${idea.id}`}
               style={{ '--row-color': theme.ideaPalette[project.colorSlot] } as CSSProperties}
               ariaRole='button'
               ariaLabel={`编辑任务：${title}`}
@@ -253,7 +261,15 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
   const targetRectsRef = useRef<DropRect[]>([])
   const suppressClickRef = useRef<string | null>(null)
   const ignoreHandleClickRef = useRef(false)
+  const ideasRef = useRef(ideas)
+  const mouseHandlersRef = useRef<{
+    start: (event: any, idea: Idea, source: GestureSource) => void
+    move: (event: any) => void
+    end: (event: any) => void
+    cancel: () => void
+  } | null>(null)
   const [sortUi, setSortUi] = useState<SortUi>(EMPTY_SORT_UI)
+  ideasRef.current = ideas
 
   const counts = useMemo(() => PRIORITY_ORDER.reduce((result, priority) => {
     result[priority] = bucketIdeas(ideas, priority).length
@@ -362,10 +378,12 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     if (sortUi.active) return
     const point = eventPoint(event)
     if (!point) return
+    const input = (event?.type === 'mousedown' || event?.nativeEvent?.type === 'mousedown') ? 'mouse' : 'touch'
     clearGestureTimer()
     const gesture: GestureState = {
       idea,
       source,
+      input,
       startX: point.x,
       startY: point.y,
       activated: false,
@@ -378,7 +396,7 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
 
     gesture.timer = setTimeout(
       () => activateDrag(gesture, gesture.latestX, gesture.latestY),
-      source === 'row' ? 520 : 300
+      source === 'row' ? 420 : 240
     )
   }
 
@@ -389,6 +407,11 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     gesture.latestX = point.x
     gesture.latestY = point.y
     const distance = Math.hypot(point.x - gesture.startX, point.y - gesture.startY)
+
+    if (!gesture.activated && gesture.input === 'mouse' && distance > 4) {
+      gesture.moved = true
+      activateDrag(gesture, point.x, point.y)
+    }
 
     if (!gesture.activated && distance > 10) {
       gesture.moved = true
@@ -440,6 +463,65 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     gestureRef.current = null
   }
 
+  mouseHandlersRef.current = {
+    start: beginGesture,
+    move: moveGesture,
+    end: endGesture,
+    cancel: cancelGesture
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (gestureRef.current?.input !== 'mouse') return
+      event.preventDefault()
+      mouseHandlersRef.current?.move(event)
+    }
+    const handleMouseUp = (event: MouseEvent) => {
+      if (gestureRef.current?.input !== 'mouse') return
+      mouseHandlersRef.current?.end(event)
+    }
+    const handleWindowBlur = () => {
+      if (gestureRef.current?.input !== 'mouse') return
+      mouseHandlersRef.current?.cancel()
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('blur', handleWindowBlur)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('blur', handleWindowBlur)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+
+    const handleDocumentMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0) return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (target.closest('.copy-row-btn')) return
+
+      const row = target.closest<HTMLElement>('.idea-row')
+      if (!row || !row.closest('.organize-shell')) return
+      const prefix = 'organize-row-'
+      const ideaId = row.id.startsWith(prefix) ? row.id.slice(prefix.length) : ''
+      const idea = ideasRef.current.find((item) => item.id === ideaId)
+      if (!idea) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      mouseHandlersRef.current?.start(event, idea, target.closest('.drag-handle') ? 'handle' : 'row')
+    }
+
+    document.addEventListener('mousedown', handleDocumentMouseDown, true)
+    return () => document.removeEventListener('mousedown', handleDocumentMouseDown, true)
+  }, [])
+
   const moveFromPicker = (priority: PriorityKey) => {
     if (!sortUi.ideaId) return
     onAssignPriority(sortUi.ideaId, priority)
@@ -463,7 +545,7 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
   return (
     <View className={`organize-shell ${sortUi.active ? 'sorting' : ''}`}>
       <View className='organize-head'>
-        <Text className='organize-subtitle'>按住卡片半秒后拖动，六点标识按住即可移动</Text>
+        <Text className='organize-subtitle'>按住卡片约 0.4 秒后拖动，六点标识按住即可移动</Text>
         <Text className='organize-total'>{ideas.length}</Text>
       </View>
 

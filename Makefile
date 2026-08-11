@@ -6,7 +6,8 @@ REMOTE_ROOT ?= /data/work/server/glimmer-notes
 BACKEND_PORT ?= 8769
 CLIENT_PORT ?= 8770
 API_BASE_URL ?= http://$(PUBLIC_HOST):$(BACKEND_PORT)
-ALLOWED_ORIGINS ?= http://$(PUBLIC_HOST):$(CLIENT_PORT)
+DEV_ORIGINS ?= http://localhost:10086,http://127.0.0.1:10086,http://localhost:10087,http://127.0.0.1:10087,http://localhost:10088,http://127.0.0.1:10088
+ALLOWED_ORIGINS ?= http://$(PUBLIC_HOST):$(CLIENT_PORT),$(DEV_ORIGINS)
 SSH_OPTS ?= -o BatchMode=yes -o ConnectTimeout=10
 SSH_BIN ?= /usr/bin/ssh
 RSYNC_RSH ?= /usr/bin/ssh $(SSH_OPTS)

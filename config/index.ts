@@ -18,7 +18,7 @@ export default defineConfig<'webpack5'>(async (merge, { command }) => {
     outputRoot: 'dist',
     plugins: [],
     defineConstants: {
-      __API_BASE_URL__: JSON.stringify(process.env.TARO_APP_API_BASE_URL || 'http://127.0.0.1:8769')
+      __API_BASE_URL__: JSON.stringify(process.env.TARO_APP_API_BASE_URL || 'http://106.55.78.71:8769')
     },
     copy: {
       patterns: [],
