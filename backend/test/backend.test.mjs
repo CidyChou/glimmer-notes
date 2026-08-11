@@ -32,6 +32,40 @@ test('newer records win and an equally new tombstone wins over a live idea', () 
   assert.deepEqual(merged.tombstones, [{ id: 'idea-1', deletedAt: 200 }])
 })
 
+test('re-seeded demo notes with different ids collapse to one idea', () => {
+  const demoText = '以后可以让 AI 自动把相关碎片连起来'
+  const merged = mergeStates(
+    {
+      ideas: [
+        idea({ id: 'random-a', text: demoText, createdAt: 100, updatedAt: 100 }),
+        idea({ id: 'random-b', text: demoText, createdAt: 120, updatedAt: 120 })
+      ],
+      projects: [],
+      tags: [],
+      tombstones: []
+    },
+    {
+      ideas: [idea({ id: 'seed-ai-link', text: demoText, createdAt: 90, updatedAt: 90 })],
+      projects: [],
+      tags: [],
+      tombstones: []
+    }
+  )
+  assert.equal(merged.ideas.length, 1)
+  assert.equal(merged.ideas[0].id, 'seed-ai-link')
+  assert.equal(merged.ideas[0].text, demoText)
+  assert.equal(merged.tombstones.length, 2)
+  assert.ok(merged.tombstones.every((item) => item.id === 'random-a' || item.id === 'random-b'))
+})
+
+test('user notes with the same text are not collapsed', () => {
+  const merged = mergeStates(
+    { ideas: [idea({ id: 'u1', text: '同一句话我想记两次', createdAt: 1, updatedAt: 1 })], projects: [], tags: [], tombstones: [] },
+    { ideas: [idea({ id: 'u2', text: '同一句话我想记两次', createdAt: 2, updatedAt: 2 })], projects: [], tags: [], tombstones: [] }
+  )
+  assert.equal(merged.ideas.length, 2)
+})
+
 test('a newer live record can intentionally restore a deleted idea', () => {
   const merged = mergeStates(
     { ideas: [], projects: [], tags: [], tombstones: [{ id: 'idea-1', deletedAt: 200 }] },

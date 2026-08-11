@@ -1,6 +1,6 @@
 import Taro from '@tarojs/taro'
+import { collapseDemoSeedDuplicates, materializeDemoSeeds } from '@/constants/demoSeeds'
 import { DEFAULT_THEME, normalizeColorSlot } from '@/theme'
-import { createId } from '@/utils/id'
 import {
   DEFAULT_PROJECT_COLOR_SLOT,
   DEFAULT_PROJECT_ID,
@@ -118,16 +118,27 @@ function normalizeProjects(values: unknown): IdeaProject[] {
 }
 
 function seedIdeas(): Idea[] {
-  const now = Date.now()
-  return [
-    { id: createId(), text: '做一个打开微信就能立刻记录灵感的工具', createdAt: now - 22 * 60_000, updatedAt: now - 22 * 60_000, colorSlot: DEFAULT_PROJECT_COLOR_SLOT, projectId: DEFAULT_PROJECT_ID, tagIds: [], pinned: false, priority: 'inbox', archivedAt: null },
-    { id: createId(), text: '游戏升级后直接给颜料，杀敌只是升级手段', createdAt: now - 57 * 60_000, updatedAt: now - 57 * 60_000, colorSlot: DEFAULT_PROJECT_COLOR_SLOT, projectId: DEFAULT_PROJECT_ID, tagIds: [], pinned: false, priority: 'urgent', archivedAt: null },
-    { id: createId(), text: '首页不要列表，做成会轻微漂浮的 Idea Space', createdAt: now - 91 * 60_000, updatedAt: now - 91 * 60_000, colorSlot: DEFAULT_PROJECT_COLOR_SLOT, projectId: DEFAULT_PROJECT_ID, tagIds: [], pinned: true, priority: 'important', archivedAt: null },
-    { id: createId(), text: '以后可以让 AI 自动把相关碎片连起来', createdAt: now - 125 * 60_000, updatedAt: now - 125 * 60_000, colorSlot: DEFAULT_PROJECT_COLOR_SLOT, projectId: DEFAULT_PROJECT_ID, tagIds: [], pinned: false, priority: 'important', archivedAt: null },
-    { id: createId(), text: '记录动作一定要在 3 秒内完成', createdAt: now - 162 * 60_000, updatedAt: now - 162 * 60_000, colorSlot: DEFAULT_PROJECT_COLOR_SLOT, projectId: DEFAULT_PROJECT_ID, tagIds: [], pinned: false, priority: 'quick', archivedAt: null },
-    { id: createId(), text: 'Web 端更适合整理，微信端只负责 capture', createdAt: now - 196 * 60_000, updatedAt: now - 196 * 60_000, colorSlot: DEFAULT_PROJECT_COLOR_SLOT, projectId: DEFAULT_PROJECT_ID, tagIds: [], pinned: false, priority: 'inbox', archivedAt: null },
-    { id: createId(), text: '保存时让文字缩成粒子飞进空间里', createdAt: now - 230 * 60_000, updatedAt: now - 230 * 60_000, colorSlot: DEFAULT_PROJECT_COLOR_SLOT, projectId: DEFAULT_PROJECT_ID, tagIds: [], pinned: false, priority: 'inbox', archivedAt: null }
-  ]
+  // Stable IDs — re-seeding must not invent new records that sync would keep forever.
+  return materializeDemoSeeds()
+}
+
+function repairDemoSeedDuplicates(
+  ideas: Idea[],
+  tombstones: IdeaTombstone[],
+  tags: IdeaTag[],
+  projects: IdeaProject[]
+): { ideas: Idea[]; tombstones: IdeaTombstone[] } {
+  const collapsed = collapseDemoSeedDuplicates(ideas, tombstones)
+  if (collapsed.removedIds.length === 0) return { ideas, tombstones }
+  try {
+    Taro.setStorageSync(STORAGE_KEY, collapsed.ideas)
+    Taro.setStorageSync(TOMBSTONE_STORAGE_KEY, collapsed.tombstones)
+    Taro.setStorageSync(TAG_STORAGE_KEY, normalizeTags(tags))
+    Taro.setStorageSync(PROJECT_STORAGE_KEY, normalizeProjects(projects))
+  } catch (error) {
+    console.warn('[IdeaSpace] repair demo seed duplicates failed', error)
+  }
+  return { ideas: collapsed.ideas, tombstones: collapsed.tombstones }
 }
 
 export function loadTags(): IdeaTag[] {
@@ -174,7 +185,10 @@ export function loadIdeaState(): LocalIdeaState {
     const projects = loadProjects()
     const stored = Taro.getStorageSync(STORAGE_KEY) as StoredIdea[] | undefined
     if (Array.isArray(stored)) {
-      return { ideas: alignIdeasToProjects(stored.map(normalizeIdea), projects), projects, tags, tombstones: loadTombstones(), hasPersistedIdeas: true }
+      const ideas = alignIdeasToProjects(stored.map(normalizeIdea), projects)
+      const tombstones = loadTombstones()
+      const repaired = repairDemoSeedDuplicates(ideas, tombstones, tags, projects)
+      return { ideas: repaired.ideas, projects, tags, tombstones: repaired.tombstones, hasPersistedIdeas: true }
     }
 
     const v6 = Taro.getStorageSync(V6_STORAGE_KEY) as StoredIdea[] | undefined
@@ -184,10 +198,13 @@ export function loadIdeaState(): LocalIdeaState {
     const legacy = Array.isArray(v6) ? v6 : Array.isArray(v5) ? v5 : Array.isArray(v4) ? v4 : v3
     if (legacy) {
       const migrated = alignIdeasToProjects(legacy.map(normalizeIdea), projects)
-      Taro.setStorageSync(STORAGE_KEY, migrated)
+      const tombstones = loadTombstones()
+      const repaired = repairDemoSeedDuplicates(migrated, tombstones, tags, projects)
+      Taro.setStorageSync(STORAGE_KEY, repaired.ideas)
+      Taro.setStorageSync(TOMBSTONE_STORAGE_KEY, repaired.tombstones)
       Taro.setStorageSync(TAG_STORAGE_KEY, tags)
       Taro.setStorageSync(PROJECT_STORAGE_KEY, projects)
-      return { ideas: migrated, projects, tags, tombstones: loadTombstones(), hasPersistedIdeas: true }
+      return { ideas: repaired.ideas, projects, tags, tombstones: repaired.tombstones, hasPersistedIdeas: true }
     }
   } catch (error) {
     console.warn('[IdeaSpace] load storage failed', error)

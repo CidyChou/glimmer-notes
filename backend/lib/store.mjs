@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { collapseDemoSeedDuplicates } from './demoSeeds.mjs'
 import { validateStoredState, validateSyncPayload } from './schema.mjs'
 
 export const EMPTY_STATE = Object.freeze({ schemaVersion: 3, ideas: [], projects: [], tags: [], tombstones: [] })
@@ -36,13 +37,23 @@ export function mergeStates(serverState, clientState) {
     }
   }
 
-  mergedIdeas.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id))
-  mergedTombstones.sort((left, right) => right.deletedAt - left.deletedAt || left.id.localeCompare(right.id))
+  // Collapse demo notes re-seeded with different random IDs (same text, many ids).
+  const collapsed = collapseDemoSeedDuplicates(mergedIdeas, mergedTombstones)
+
+  collapsed.ideas.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id))
+  collapsed.tombstones.sort((left, right) => right.deletedAt - left.deletedAt || left.id.localeCompare(right.id))
+  const tombstoneById = chooseNewest(collapsed.tombstones, 'deletedAt')
   const mergedProjects = [...projects.values()].filter((project) => {
-    const tombstone = tombstones.get(project.id)
+    const tombstone = tombstoneById.get(project.id)
     return !tombstone || tombstone.deletedAt < project.updatedAt
   })
-  return { schemaVersion: 3, ideas: mergedIdeas, projects: mergedProjects, tags: [...tags.values()], tombstones: mergedTombstones }
+  return {
+    schemaVersion: 3,
+    ideas: collapsed.ideas,
+    projects: mergedProjects,
+    tags: [...tags.values()],
+    tombstones: collapsed.tombstones
+  }
 }
 
 export class JsonSyncStore {

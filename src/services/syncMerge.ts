@@ -1,3 +1,4 @@
+import { collapseDemoSeedDuplicates } from '@/constants/demoSeeds'
 import type { Idea, IdeaProject, IdeaTag, IdeaTombstone } from '@/types/idea'
 
 export interface SyncState {
@@ -32,16 +33,25 @@ export function mergeSyncStates(local: SyncState, remote: SyncState): SyncState 
     else if (idea) mergedIdeas.push(idea)
   })
 
-  mergedIdeas.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id))
-  mergedTombstones.sort((left, right) => right.deletedAt - left.deletedAt || left.id.localeCompare(right.id))
+  // Re-seeded demo notes used random IDs; collapse by known demo text after id-merge.
+  const collapsed = collapseDemoSeedDuplicates(mergedIdeas, mergedTombstones)
+
+  collapsed.ideas.sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id))
+  collapsed.tombstones.sort((left, right) => right.deletedAt - left.deletedAt || left.id.localeCompare(right.id))
+  const tombstoneById = newestById(collapsed.tombstones, (item) => item.deletedAt)
   const mergedTags = [...tags.values()].sort((left, right) => (
     left.createdAt - right.createdAt || left.id.localeCompare(right.id)
   ))
   const mergedProjects = [...projects.values()].filter((project) => {
-    const tombstone = tombstones.get(project.id)
+    const tombstone = tombstoneById.get(project.id)
     return !tombstone || tombstone.deletedAt < project.updatedAt
   }).sort((left, right) => (
     Number(right.isDefault) - Number(left.isDefault) || left.createdAt - right.createdAt || left.id.localeCompare(right.id)
   ))
-  return { ideas: mergedIdeas, projects: mergedProjects, tags: mergedTags, tombstones: mergedTombstones }
+  return {
+    ideas: collapsed.ideas,
+    projects: mergedProjects,
+    tags: mergedTags,
+    tombstones: collapsed.tombstones
+  }
 }

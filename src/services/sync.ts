@@ -1,4 +1,5 @@
 import Taro from '@tarojs/taro'
+import { isDemoOnlyIdeaSet } from '@/constants/demoSeeds'
 import { loadIdeaState, saveIdeaState } from '@/services/ideaStorage'
 import { mergeSyncStates } from '@/services/syncMerge'
 import { DEFAULT_PROJECT_ID, LEGACY_PROJECT_TAG_ID } from '@/types/idea'
@@ -130,7 +131,28 @@ function applyServerState(remote: SyncResponse, replaceLocal = false) {
 async function performSync(initial: boolean) {
   const local = loadIdeaState()
   let remote: SyncResponse
-  if (initial && !local.hasPersistedIdeas && local.tombstones.length === 0) {
+
+  // Fresh device / cleared storage still shows demo seeds in memory. Never id-merge those
+  // into a cloud account that already has real data — that was the main source of duplicates.
+  const localIsEphemeralDemo = (
+    (!local.hasPersistedIdeas || isDemoOnlyIdeaSet(local.ideas))
+    && local.tombstones.length === 0
+  )
+
+  if (initial && localIsEphemeralDemo) {
+    remote = await request<SyncResponse>('/api/sync', 'GET')
+    if (remote.ideas.length === 0 && remote.tombstones.length === 0) {
+      // Brand-new cloud: seed once with stable demo IDs.
+      remote = await request<SyncResponse>('/api/sync', 'POST', {
+        ideas: local.ideas,
+        projects: local.projects,
+        tags: local.tags,
+        tombstones: local.tombstones
+      })
+    }
+    applyServerState(remote, true)
+  } else if (localIsEphemeralDemo) {
+    // Non-initial path but still only demo seeds: prefer GET/replace over merge.
     remote = await request<SyncResponse>('/api/sync', 'GET')
     if (remote.ideas.length === 0 && remote.tombstones.length === 0) {
       remote = await request<SyncResponse>('/api/sync', 'POST', {

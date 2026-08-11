@@ -45,12 +45,43 @@
 .icon-btn:active { transform: scale(.955); }
 .search-btn,
 .settings-btn { display: flex; align-items: center; justify-content: center; overflow: visible; }
+.search-icon-shell,
+.settings-icon-shell {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  line-height: 0;
+}
+.search-icon,
+.settings-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  object-position: center;
+  opacity: .82;
+  pointer-events: none;
+  transition: opacity .16s ease-out;
+}
+.search-icon {
+  /* Match gear visual weight: SVG path sits a bit lighter than the PNG */
+  opacity: .9;
+}
+.search-btn:active .search-icon,
+.settings-btn:active .settings-icon { opacity: 1; }
 .search-glyph {
   position: relative;
   width: 19px;
   height: 19px;
   border: 2px solid currentColor;
   border-radius: 50%;
+  flex: none;
 }
 .search-glyph::after {
   content: '';
@@ -64,29 +95,6 @@
   transform: rotate(45deg);
   transform-origin: center;
 }
-.settings-icon-shell {
-  width: 30px;
-  height: 30px;
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  overflow: visible;
-  line-height: 0;
-}
-.settings-icon {
-  display: block;
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  object-position: center;
-  opacity: .82;
-  pointer-events: none;
-  transition: opacity .16s ease-out;
-}
-.settings-btn:active .settings-icon { opacity: 1; }
 
 .space-view,
 .organize-view { position: absolute; z-index: 3; transition: opacity .22s, transform .22s; }
@@ -126,8 +134,7 @@
   .search-wrap { left: auto; right: 26px; width: 520px; }
   .organize-head,
   .bucket-tabs,
-  .bucket-summary,
-  .organize-swiper { width: min(790px, calc(100% - 48px)); margin-left: auto; margin-right: auto; }
+  .bucket-page { width: min(790px, calc(100% - 48px)); margin-left: auto; margin-right: auto; }
   .space-hint { bottom: 42px; font-size: 11px; }
 }
 

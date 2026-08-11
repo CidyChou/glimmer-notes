@@ -18,6 +18,7 @@ import type { Idea, IdeaDropTarget, IdeaProject, IdeaTag, PriorityKey } from '@/
 import { findIdeaProject, findIdeaTags, findProjectById, toggleTagId } from '@/utils/tags'
 import { useTheme } from '@/theme'
 import type { IdeaColorSlot } from '@/theme'
+import searchIcon from '@/assets/icons/search.svg'
 import settingsIcon from '@/assets/icons/settings.png'
 import './index.css'
 
@@ -258,7 +259,11 @@ export default function IndexPage() {
               className='icon-btn search-btn'
               ariaLabel='搜索想法'
               onClick={() => setSearchOpen((open) => !open)}
-            ><View className='search-glyph' /></Button>
+            >
+              <View className='search-icon-shell'>
+                <Image className='search-icon' src={searchIcon} mode='aspectFit' />
+              </View>
+            </Button>
             <Button
               className='icon-btn settings-btn'
               ariaLabel='打开设置'

@@ -1,5 +1,5 @@
 import Taro from '@tarojs/taro'
-import { ScrollView, Swiper, SwiperItem, Text, View } from '@tarojs/components'
+import { ScrollView, Text, View } from '@tarojs/components'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { PRIORITY_META, PRIORITY_ORDER } from '@/constants/priorities'
@@ -37,6 +37,7 @@ interface SortUi {
   x: number
   y: number
   hover: IdeaDropTarget | null
+  phase: 'idle' | 'lifting' | 'flying'
 }
 
 interface GestureState {
@@ -49,7 +50,7 @@ interface GestureState {
   moved: boolean
   latestX: number
   latestY: number
-  timer: ReturnType<typeof setTimeout> | null
+  aborted: boolean
 }
 
 interface DropRect {
@@ -68,8 +69,14 @@ const EMPTY_SORT_UI: SortUi = {
   sourcePriority: null,
   x: 0,
   y: 0,
-  hover: null
+  hover: null,
+  phase: 'idle'
 }
+
+/** Movement needed before drag starts — tiny so it feels instant, big enough to ignore jitter. */
+const ACTIVATE_DISTANCE = 5
+/** On row body, prefer horizontal intent so vertical list scroll still works. */
+const ROW_SCROLL_RATIO = 1.35
 
 function bucketIdeas(ideas: Idea[], priority: PriorityKey) {
   return ideas
@@ -131,7 +138,7 @@ function Timeline({
         <View>
           <View className='empty-orb'>○</View>
           <Text className='empty-title'>{PRIORITY_META[priority].name}里还没有内容</Text>
-          <Text className='empty-copy'>{PRIORITY_META[priority].hint}{'\n'}长按其他卡片，拖进这里。</Text>
+          <Text className='empty-copy'>{PRIORITY_META[priority].hint}{'\n'}拖动其他卡片，放进这里。</Text>
         </View>
       </View>
     )
@@ -154,7 +161,7 @@ function Timeline({
           <View key={idea.id}>
             {showDay && <View className='day-label'>{day}</View>}
             <View
-              className={`idea-row ${isSource ? 'sort-source' : ''}`}
+              className={`idea-row ${isSource ? 'sort-source' : ''} ${isSource && sortUi.phase === 'flying' ? 'sort-source-flying' : ''}`}
               id={`organize-row-${idea.id}`}
               style={{ '--row-color': theme.ideaPalette[project.colorSlot] } as CSSProperties}
               ariaRole='button'
@@ -256,12 +263,15 @@ function Timeline({
 export default function OrganizeView({ ideas, projects, tags, current, onCurrentChange, onOpenIdea, onAssignPriority, onArchiveIdea, onCopyIdea, onDragUiChange }: Props) {
   const { theme } = useTheme()
   const key = PRIORITY_ORDER[current]
-  const meta = PRIORITY_META[key]
   const gestureRef = useRef<GestureState | null>(null)
   const targetRectsRef = useRef<DropRect[]>([])
   const suppressClickRef = useRef<string | null>(null)
   const ignoreHandleClickRef = useRef(false)
   const ideasRef = useRef(ideas)
+  const ghostRef = useRef<any>(null)
+  const lastHoverRef = useRef<IdeaDropTarget | null>(null)
+  const rafRef = useRef<number | null>(null)
+  const pendingPointRef = useRef<{ x: number; y: number } | null>(null)
   const mouseHandlersRef = useRef<{
     start: (event: any, idea: Idea, source: GestureSource) => void
     move: (event: any) => void
@@ -281,20 +291,72 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     [sortUi.sourcePriority]
   )
 
-  const clearGestureTimer = () => {
-    const gesture = gestureRef.current
-    if (gesture?.timer) {
-      clearTimeout(gesture.timer)
-      gesture.timer = null
+  const list = useMemo(() => bucketIdeas(ideas, key), [ideas, key])
+
+  const resolveGhostEl = (): HTMLElement | null => {
+    const node = ghostRef.current
+    if (!node) return null
+    if (typeof (node as HTMLElement).style !== 'undefined') return node as HTMLElement
+    const nested = (node as { $el?: HTMLElement }).$el
+    return nested && typeof nested.style !== 'undefined' ? nested : null
+  }
+
+  const applyGhostPosition = (x: number, y: number) => {
+    // Direct DOM write keeps the light-dot buttery on H5; React state still owns hover/phase.
+    const el = resolveGhostEl()
+    if (!el) return false
+    el.style.left = `${x}px`
+    el.style.top = `${y}px`
+    return true
+  }
+
+  const flushGhostFrame = () => {
+    rafRef.current = null
+    const point = pendingPointRef.current
+    if (!point) return
+    pendingPointRef.current = null
+    const hover = targetAt(point.x, point.y)
+    const hoverChanged = hover !== lastHoverRef.current
+    lastHoverRef.current = hover
+    const wroteDom = applyGhostPosition(point.x, point.y)
+
+    if (hoverChanged) {
+      setSortUi((state) => ({ ...state, x: point.x, y: point.y, hover }))
+      onDragUiChange(true, hover)
+      return
+    }
+
+    // Skip React re-render when H5 DOM already tracks the finger.
+    if (!wroteDom) {
+      setSortUi((state) => (
+        state.x === point.x && state.y === point.y
+          ? state
+          : { ...state, x: point.x, y: point.y }
+      ))
+    }
+  }
+
+  const scheduleGhostMove = (x: number, y: number) => {
+    pendingPointRef.current = { x, y }
+    if (rafRef.current != null) return
+    if (typeof requestAnimationFrame === 'function') {
+      rafRef.current = requestAnimationFrame(flushGhostFrame)
+    } else {
+      flushGhostFrame()
     }
   }
 
   const closeSortUi = () => {
-    clearGestureTimer()
+    if (rafRef.current != null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    pendingPointRef.current = null
+    lastHoverRef.current = null
     gestureRef.current = null
     targetRectsRef.current = []
     onDragUiChange(false, null)
-    setSortUi((state) => ({ ...state, active: false, hover: null }))
+    setSortUi((state) => ({ ...state, active: false, hover: null, phase: 'idle' }))
   }
 
   const measureTargets = () => {
@@ -323,8 +385,8 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
 
   useEffect(() => {
     if (!sortUi.active) return undefined
-    const fastTimer = setTimeout(measureTargets, 32)
-    const settledTimer = setTimeout(measureTargets, 220)
+    const fastTimer = setTimeout(measureTargets, 24)
+    const settledTimer = setTimeout(measureTargets, 180)
     return () => {
       clearTimeout(fastTimer)
       clearTimeout(settledTimer)
@@ -333,7 +395,11 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortUi.active, sortUi.sourcePriority])
 
-  useEffect(() => () => clearGestureTimer(), [])
+  useEffect(() => () => {
+    if (rafRef.current != null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(rafRef.current)
+    }
+  }, [])
 
   const targetAt = (x: number, y: number) => {
     const target = targetRectsRef.current.find((rect) => (
@@ -343,10 +409,10 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
   }
 
   const activateDrag = (gesture: GestureState, x: number, y: number) => {
-    if (gesture.activated) return
+    if (gesture.activated || gesture.aborted) return
     gesture.activated = true
     suppressClickRef.current = gesture.idea.id
-    clearGestureTimer()
+    lastHoverRef.current = null
     setSortUi({
       active: true,
       mode: 'dragging',
@@ -355,9 +421,18 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
       sourcePriority: gesture.idea.priority,
       x,
       y,
-      hover: null
+      hover: null,
+      phase: 'lifting'
     })
     onDragUiChange(true, null)
+    // Tiny lift → flying light-dot so the shrink feels snappy, not delayed.
+    setTimeout(() => {
+      setSortUi((state) => (
+        state.active && state.mode === 'dragging' && state.phase === 'lifting'
+          ? { ...state, phase: 'flying' }
+          : state
+      ))
+    }, 70)
     if (process.env.TARO_ENV !== 'h5') void Taro.vibrateShort({ type: 'light' }).catch(() => undefined)
   }
 
@@ -370,7 +445,8 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
       sourcePriority: idea.priority,
       x: 0,
       y: 0,
-      hover: null
+      hover: null,
+      phase: 'idle'
     })
   }
 
@@ -379,8 +455,7 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     const point = eventPoint(event)
     if (!point) return
     const input = (event?.type === 'mousedown' || event?.nativeEvent?.type === 'mousedown') ? 'mouse' : 'touch'
-    clearGestureTimer()
-    const gesture: GestureState = {
+    gestureRef.current = {
       idea,
       source,
       input,
@@ -390,52 +465,50 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
       moved: false,
       latestX: point.x,
       latestY: point.y,
-      timer: null
+      aborted: false
     }
-    gestureRef.current = gesture
-
-    gesture.timer = setTimeout(
-      () => activateDrag(gesture, gesture.latestX, gesture.latestY),
-      source === 'row' ? 420 : 240
-    )
   }
 
   const moveGesture = (event: any) => {
     const gesture = gestureRef.current
     const point = eventPoint(event)
-    if (!gesture || !point) return
+    if (!gesture || !point || gesture.aborted) return
     gesture.latestX = point.x
     gesture.latestY = point.y
-    const distance = Math.hypot(point.x - gesture.startX, point.y - gesture.startY)
+    const dx = point.x - gesture.startX
+    const dy = point.y - gesture.startY
+    const distance = Math.hypot(dx, dy)
 
-    if (!gesture.activated && gesture.input === 'mouse' && distance > 4) {
+    if (!gesture.activated) {
+      if (distance < ACTIVATE_DISTANCE) return
+
+      // Touch on row body: vertical-dominant move = list scroll, release the gesture.
+      // Mouse can drag any direction; scroll isn't a concern.
+      if (
+        gesture.source === 'row'
+        && gesture.input === 'touch'
+        && Math.abs(dy) > Math.abs(dx) * ROW_SCROLL_RATIO
+      ) {
+        gesture.aborted = true
+        gestureRef.current = null
+        return
+      }
+
       gesture.moved = true
+      if (event?.preventDefault) event.preventDefault()
       activateDrag(gesture, point.x, point.y)
+      return
     }
 
-    if (!gesture.activated && distance > 10) {
-      gesture.moved = true
-      suppressClickRef.current = gesture.idea.id
-      clearGestureTimer()
-    }
-
-    if (!gesture.activated) return
     gesture.moved = true
-    const hover = targetAt(point.x, point.y)
-    setSortUi((state) => ({
-      ...state,
-      x: point.x,
-      y: point.y,
-      hover
-    }))
-    onDragUiChange(true, hover)
+    if (event?.preventDefault) event.preventDefault()
+    scheduleGhostMove(point.x, point.y)
   }
 
   const endGesture = (event: any) => {
     const gesture = gestureRef.current
     if (!gesture) return
-    const point = eventPoint(event, true) || { x: gesture.startX, y: gesture.startY }
-    clearGestureTimer()
+    const point = eventPoint(event, true) || { x: gesture.latestX, y: gesture.latestY }
 
     if (gesture.source === 'handle') {
       ignoreHandleClickRef.current = true
@@ -443,14 +516,21 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     }
 
     if (gesture.activated) {
-      const target = targetAt(point.x, point.y)
+      // Flush any pending rAF so drop uses the latest finger position.
+      if (rafRef.current != null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+      const finalPoint = pendingPointRef.current || point
+      pendingPointRef.current = null
+      const target = targetAt(finalPoint.x, finalPoint.y)
       if (target === 'archive') onArchiveIdea(gesture.idea.id)
       else if (target) onAssignPriority(gesture.idea.id, target)
       closeSortUi()
       return
     }
 
-    if (gesture.source === 'handle' && !gesture.moved) {
+    if (gesture.source === 'handle' && !gesture.moved && !gesture.aborted) {
       suppressClickRef.current = gesture.idea.id
       openPicker(gesture.idea)
     }
@@ -458,9 +538,8 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
   }
 
   const cancelGesture = () => {
-    clearGestureTimer()
     if (gestureRef.current?.activated) closeSortUi()
-    gestureRef.current = null
+    else gestureRef.current = null
   }
 
   mouseHandlersRef.current = {
@@ -545,9 +624,27 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
   return (
     <View className={`organize-shell ${sortUi.active ? 'sorting' : ''}`}>
       <View className='organize-head'>
-        <Text className='organize-subtitle'>按住卡片约 0.4 秒后拖动，六点标识按住即可移动</Text>
+        <Text className='organize-subtitle'>拖动卡片即可归类 · 点右侧六点可快速选择</Text>
         <Text className='organize-total'>{ideas.length}</Text>
       </View>
+
+      <ScrollView className='bucket-page' scrollY={!sortUi.active} enhanced showScrollbar={false}>
+        <Timeline
+          ideas={list}
+          projects={projects}
+          tags={tags}
+          priority={key}
+          sortUi={sortUi}
+          onOpenIdea={onOpenIdea}
+          onGestureStart={beginGesture}
+          onGestureMove={moveGesture}
+          onGestureEnd={endGesture}
+          onGestureCancel={cancelGesture}
+          onSuppressClick={suppressRowClick}
+          onHandleClick={handleHandleClick}
+          onCopyIdea={onCopyIdea}
+        />
+      </ScrollView>
 
       <View className='bucket-tabs'>
         {PRIORITY_ORDER.map((priority, index) => (
@@ -557,7 +654,10 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
             style={{ '--bucket-color': theme.priorities[priority] } as CSSProperties}
             ariaRole='button'
             ariaLabel={`${PRIORITY_META[priority].name}，${counts[priority]} 条`}
-            onClick={() => onCurrentChange(index)}
+            onClick={() => {
+              if (sortUi.active) return
+              onCurrentChange(index)
+            }}
           >
             <View className='bucket-tab-dot' />
             <Text>{PRIORITY_META[priority].name}</Text>
@@ -565,54 +665,6 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
           </View>
         ))}
       </View>
-
-      <View className='bucket-summary'>
-        <View className='bucket-title-line'>
-          <View
-            className='bucket-dot'
-            style={{
-              background: theme.priorities[key],
-              boxShadow: `0 0 14px ${theme.priorities[key]}55`
-            }}
-          />
-          <Text className='bucket-title'>{meta.hint}</Text>
-        </View>
-        <Text className='swipe-tip'>左右滑动切换</Text>
-      </View>
-
-      <Swiper
-        className='organize-swiper'
-        current={current}
-        duration={260}
-        circular={false}
-        disableTouch={sortUi.active}
-        onChange={(event) => onCurrentChange(event.detail.current)}
-      >
-        {PRIORITY_ORDER.map((priority) => {
-          const list = bucketIdeas(ideas, priority)
-          return (
-            <SwiperItem key={priority} className='bucket-swiper-item'>
-              <ScrollView className='bucket-page' scrollY={!sortUi.active} enhanced showScrollbar={false}>
-                <Timeline
-                  ideas={list}
-                  projects={projects}
-                  tags={tags}
-                  priority={priority}
-                  sortUi={sortUi}
-                  onOpenIdea={onOpenIdea}
-                  onGestureStart={beginGesture}
-                  onGestureMove={moveGesture}
-                  onGestureEnd={endGesture}
-                  onGestureCancel={cancelGesture}
-                  onSuppressClick={suppressRowClick}
-                  onHandleClick={handleHandleClick}
-                  onCopyIdea={onCopyIdea}
-                />
-              </ScrollView>
-            </SwiperItem>
-          )
-        })}
-      </Swiper>
 
       <View className={`sort-overlay ${sortUi.active ? 'show' : ''} ${sortUi.mode || ''}`}>
         <View className='sort-backdrop' onClick={() => sortUi.mode === 'choosing' && closeSortUi()} />
@@ -634,13 +686,15 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
 
       {sortUi.active && sortUi.mode === 'dragging' && (
         <View
-          className='drag-ghost'
+          ref={ghostRef}
+          className={`drag-ghost ${sortUi.phase} ${sortUi.hover ? 'magnet' : ''}`}
           style={{
             '--ghost-color': theme.ideaPalette[sortUi.ideaColorSlot],
             left: `${sortUi.x}px`,
             top: `${sortUi.y}px`
           } as CSSProperties}
         >
+          <View className='drag-ghost-aura' />
           <View className='drag-ghost-core' />
         </View>
       )}
