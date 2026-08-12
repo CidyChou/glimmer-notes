@@ -150,8 +150,8 @@ describe('inline', () => {
     assert.ok(types.includes('strong'))
     assert.ok(types.includes('em'))
     assert.ok(types.includes('code'))
-    assert.ok(!children.some((c) => c.type === 'strong' && (c as { children: unknown[] }).children.length === 0))
-    assert.ok(!children.some((c) => c.type === 'code' && (c as { text: string }).text === ''))
+    assert.ok(!children.some((c) => c.type === 'strong' && (c as unknown as { children: unknown[] }).children.length === 0))
+    assert.ok(!children.some((c) => c.type === 'code' && (c as unknown as { text: string }).text === ''))
   })
 
   it('treats _em_ only at soft word boundaries (not snake_case)', () => {
