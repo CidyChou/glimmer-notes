@@ -21,6 +21,7 @@ import { createId } from '@/utils/id'
 import { copyText } from '@/utils/clipboard'
 import { isToday } from '@/utils/date'
 import { composeIdeaText, splitIdeaText } from '@/utils/ideaText'
+import { toggleTaskAtLine } from '@/utils/markdown'
 import { DEFAULT_PROJECT_ID } from '@/types/idea'
 import type { Idea, IdeaDropTarget, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
 import { findIdeaProject, findIdeaTags, findProjectById, toggleTagId } from '@/utils/tags'
@@ -37,6 +38,8 @@ export default function IndexPage() {
   const { themeStyle } = useTheme()
   const [initialState] = useState(loadIdeaState)
   const [ideas, setIdeas] = useState<Idea[]>(initialState.ideas)
+  const ideasRef = useRef(ideas)
+  ideasRef.current = ideas
   const [projects, setProjects] = useState<IdeaProject[]>(initialState.projects)
   const [tags, setTags] = useState<IdeaTag[]>(initialState.tags)
   const [mode, setMode] = useState<Mode>('space')
@@ -114,6 +117,7 @@ export default function IndexPage() {
   }, [activeIdeas, projects, query, tags])
 
   const commitIdeas = (next: Idea[]) => {
+    ideasRef.current = next
     setIdeas(next)
     saveIdeas(next)
     scheduleSync()
@@ -273,16 +277,18 @@ export default function IndexPage() {
     flash('修改已保存')
   }
 
-  const patchSelectedDetails = (details: string) => {
+  /** Toggle a task checkbox using latest ideas (ref) so rapid taps do not race. */
+  const toggleSelectedTaskLine = (lineIndex: number) => {
     if (!selectedId) return
-    const current = ideas.find((idea) => idea.id === selectedId)
+    const current = ideasRef.current.find((idea) => idea.id === selectedId)
     if (!current) return
-    const { title } = splitIdeaText(current.text)
-    const text = composeIdeaText(title, details)
+    const { title, details } = splitIdeaText(current.text)
+    const nextDetails = toggleTaskAtLine(details, lineIndex)
+    const text = composeIdeaText(title, nextDetails)
     if (text === current.text) return
     const updatedAt = Date.now()
     const after = { ...current, text, updatedAt }
-    commitIdeas(ideas.map((idea) => idea.id === selectedId ? after : idea))
+    commitIdeas(ideasRef.current.map((idea) => idea.id === selectedId ? after : idea))
     recordIdeaChange({ ideaId: selectedId, before: current, after, label: '更新清单' })
   }
 
@@ -468,7 +474,7 @@ export default function IndexPage() {
             onCopy={() => void copyIdea(selectedIdea)}
             onArchive={() => archiveIdea(selectedIdea.id)}
             onSave={saveSelected}
-            onPatchDetails={patchSelectedDetails}
+            onToggleTaskLine={toggleSelectedTaskLine}
             onTogglePin={togglePin}
             onDelete={deleteSelected}
           />

@@ -1,4 +1,5 @@
 import { Text, View } from '@tarojs/components'
+import Taro from '@tarojs/taro'
 import type { ReactNode } from 'react'
 import {
   parseMarkdown,
@@ -23,7 +24,11 @@ function openHref(href: string) {
     return
   }
 
-  void copyText(href)
+  void copyText(href).then(() => {
+    void Taro.showToast({ title: '链接已复制', icon: 'none', duration: 1500 })
+  }).catch(() => {
+    void Taro.showToast({ title: '链接已复制', icon: 'none', duration: 1500 })
+  })
 }
 
 function renderInline(nodes: InlineNode[], keyPrefix: string): ReactNode[] {
@@ -87,20 +92,17 @@ function ListItemRow({
   const isTask = !!item.task
   const checked = !!item.checked
 
+  const canToggle = isTask && !!onToggleTask
+
   return (
     <View
-      className={`md-li ${isTask ? 'md-task' : ''} ${isTask && checked ? 'md-task-done' : ''}`}
+      className={`md-li ${isTask ? 'md-task' : ''} ${isTask && checked ? 'md-task-done' : ''} ${canToggle ? 'md-task-interactive' : ''}`}
+      ariaRole={canToggle ? 'button' : undefined}
+      ariaLabel={canToggle ? (checked ? '取消完成' : '标记完成') : undefined}
+      onClick={canToggle ? () => onToggleTask?.(item.lineIndex) : undefined}
     >
       {isTask ? (
-        <View
-          className={`md-checkbox ${checked ? 'checked' : ''} ${onToggleTask ? 'interactive' : ''}`}
-          ariaRole={onToggleTask ? 'button' : undefined}
-          ariaLabel={checked ? '取消完成' : '标记完成'}
-          onClick={(event) => {
-            event.stopPropagation()
-            onToggleTask?.(item.lineIndex)
-          }}
-        >
+        <View className={`md-checkbox ${checked ? 'checked' : ''} ${canToggle ? 'interactive' : ''}`}>
           {checked ? <Text className='md-checkbox-mark'>✓</Text> : null}
         </View>
       ) : ordered ? (

@@ -25,7 +25,7 @@ interface Props {
   onCreateProject: (name: string, colorSlot: IdeaColorSlot) => IdeaProject | null
   onTagToggle: (tagId: string) => void
   onSave: (title: string, details: string) => void
-  onPatchDetails: (details: string) => void
+  onToggleTaskLine: (lineIndex: number) => void
   onTogglePin: () => void
   onCopy: () => void
   onArchive: () => void
@@ -43,7 +43,7 @@ export default function DetailSheet({
   onCreateProject,
   onTagToggle,
   onSave,
-  onPatchDetails,
+  onToggleTaskLine,
   onTogglePin,
   onCopy,
   onArchive,
@@ -76,8 +76,7 @@ export default function DetailSheet({
   }
 
   const handleReadToggleTask = (lineIndex: number) => {
-    const next = toggleTaskAtLine(live.details, lineIndex)
-    if (next !== live.details) onPatchDetails(next)
+    onToggleTaskLine(lineIndex)
   }
 
   const handlePreviewToggleTask = (lineIndex: number) => {

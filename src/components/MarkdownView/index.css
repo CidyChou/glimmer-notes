@@ -93,11 +93,23 @@
   font-variant-numeric: tabular-nums;
 }
 
+.md-task-interactive {
+  min-height: 36px;
+  margin-left: -4px;
+  margin-right: -4px;
+  padding: 4px;
+  border-radius: 10px;
+}
+
+.md-task-interactive:active {
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
 .md-checkbox {
   flex: none;
-  width: 16px;
-  height: 16px;
-  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
   border: 1.5px solid rgba(var(--border-rgb), 0.28);
   border-radius: 5px;
   background: rgba(var(--surface-rgb), 0.55);
