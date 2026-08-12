@@ -108,6 +108,7 @@ interface TimelineProps {
   projects: IdeaProject[]
   tags: IdeaTag[]
   priority: PriorityKey
+  filtersActive: boolean
   sortUi: SortUi
   onOpenIdea: (id: string) => void
   onGestureStart: (event: any, idea: Idea, source: GestureSource) => void
@@ -117,6 +118,7 @@ interface TimelineProps {
   onSuppressClick: (id: string) => boolean
   onHandleClick: (idea: Idea) => void
   onCopyIdea: (idea: Idea) => void
+  onClearFilters: () => void
 }
 
 function Timeline({
@@ -124,6 +126,7 @@ function Timeline({
   projects,
   tags,
   priority,
+  filtersActive,
   sortUi,
   onOpenIdea,
   onGestureStart,
@@ -132,7 +135,8 @@ function Timeline({
   onGestureCancel,
   onSuppressClick,
   onHandleClick,
-  onCopyIdea
+  onCopyIdea,
+  onClearFilters
 }: TimelineProps) {
   const { theme } = useTheme()
   if (ideas.length === 0) {
@@ -140,8 +144,22 @@ function Timeline({
       <View className='empty-state'>
         <View>
           <View className='empty-orb'>○</View>
-          <Text className='empty-title'>{PRIORITY_META[priority].name}里还没有内容</Text>
-          <Text className='empty-copy'>{PRIORITY_META[priority].hint}{'\n'}拖动其他卡片，放进这里。</Text>
+          <Text className='empty-title'>
+            {filtersActive ? `${PRIORITY_META[priority].name}里没有匹配内容` : `${PRIORITY_META[priority].name}里还没有内容`}
+          </Text>
+          <Text className='empty-copy'>
+            {filtersActive ? '试试其他项目或标签。' : `${PRIORITY_META[priority].hint}\n拖动其他卡片，放进这里。`}
+          </Text>
+          {filtersActive && (
+            <View
+              className='empty-clear'
+              ariaRole='button'
+              ariaLabel='清除项目和标签筛选'
+              onClick={onClearFilters}
+            >
+              <Text>清除筛选</Text>
+            </View>
+          )}
         </View>
       </View>
     )
@@ -282,19 +300,58 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     cancel: () => void
   } | null>(null)
   const [sortUi, setSortUi] = useState<SortUi>(EMPTY_SORT_UI)
+  const [filterMenu, setFilterMenu] = useState<'project' | 'tag' | null>(null)
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(null)
   ideasRef.current = ideas
 
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) || null,
+    [projects, selectedProjectId]
+  )
+  const selectedTag = useMemo(
+    () => tags.find((tag) => tag.id === selectedTagId) || null,
+    [selectedTagId, tags]
+  )
+  const filtersActive = !!selectedProjectId || !!selectedTagId
+  const filteredIdeas = useMemo(() => ideas.filter((idea) => (
+    (!selectedProjectId || idea.projectId === selectedProjectId)
+    && (!selectedTagId || idea.tagIds.includes(selectedTagId))
+  )), [ideas, selectedProjectId, selectedTagId])
+
   const counts = useMemo(() => PRIORITY_ORDER.reduce((result, priority) => {
-    result[priority] = bucketIdeas(ideas, priority).length
+    result[priority] = bucketIdeas(filteredIdeas, priority).length
     return result
-  }, {} as Record<PriorityKey, number>), [ideas])
+  }, {} as Record<PriorityKey, number>), [filteredIdeas])
 
   const availableTargets = useMemo(
     () => PRIORITY_ORDER.filter((priority) => priority !== sortUi.sourcePriority),
     [sortUi.sourcePriority]
   )
 
-  const list = useMemo(() => bucketIdeas(ideas, key), [ideas, key])
+  const list = useMemo(() => bucketIdeas(filteredIdeas, key), [filteredIdeas, key])
+
+  const clearFilters = () => {
+    setSelectedProjectId(null)
+    setSelectedTagId(null)
+    setFilterMenu(null)
+  }
+
+  useEffect(() => {
+    if (selectedProjectId && !projects.some((project) => project.id === selectedProjectId)) {
+      setSelectedProjectId(null)
+    }
+  }, [projects, selectedProjectId])
+
+  useEffect(() => {
+    if (selectedTagId && !tags.some((tag) => tag.id === selectedTagId)) {
+      setSelectedTagId(null)
+    }
+  }, [selectedTagId, tags])
+
+  useEffect(() => {
+    if (sortUi.active) setFilterMenu(null)
+  }, [sortUi.active])
 
   const resolveGhostEl = (): HTMLElement | null => {
     const node = ghostRef.current
@@ -627,8 +684,86 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
   return (
     <View className={`organize-shell ${sortUi.active ? 'sorting' : ''}`}>
       <View className='organize-head'>
-        <Text className='organize-subtitle'>拖动卡片即可归类 · 点右侧六点可快速选择</Text>
-        <Text className='organize-total'>{ideas.length}</Text>
+        <View className={`organize-filter ${filterMenu ? 'expanded' : ''}`}>
+          <View className='filter-bar'>
+            <View
+              className={`filter-control ${selectedProject ? 'active' : ''} ${filterMenu === 'project' ? 'open' : ''}`}
+              ariaRole='button'
+              ariaLabel={`按项目筛选，当前${selectedProject?.name || '全部项目'}`}
+              onClick={() => setFilterMenu((menu) => menu === 'project' ? null : 'project')}
+            >
+              <Text className='filter-control-prefix'>项目</Text>
+              <Text className='filter-control-value'>{selectedProject?.name || '全部'}</Text>
+              <Text className='filter-chevron'>⌄</Text>
+            </View>
+            <View
+              className={`filter-control ${selectedTag ? 'active' : ''} ${filterMenu === 'tag' ? 'open' : ''} ${tags.length === 0 ? 'disabled' : ''}`}
+              ariaRole='button'
+              ariaLabel={tags.length === 0 ? '暂无可筛选标签' : `按标签筛选，当前${selectedTag?.name || '全部标签'}`}
+              onClick={() => tags.length > 0 && setFilterMenu((menu) => menu === 'tag' ? null : 'tag')}
+            >
+              <Text className='filter-control-prefix'>标签</Text>
+              <Text className='filter-control-value'>{selectedTag?.name || '全部'}</Text>
+              <Text className='filter-chevron'>⌄</Text>
+            </View>
+            {filtersActive && (
+              <View
+                className='filter-clear'
+                ariaRole='button'
+                ariaLabel='清除项目和标签筛选'
+                onClick={clearFilters}
+              >
+                <Text>清除</Text>
+              </View>
+            )}
+          </View>
+
+          {filterMenu && (
+            <View className='filter-menu'>
+              <Text className='filter-menu-title'>{filterMenu === 'project' ? '选择项目' : '选择标签'}</Text>
+              <ScrollView className='filter-options-scroll' scrollX enhanced showScrollbar={false}>
+                <View className='filter-options'>
+                  <View
+                    className={`filter-option ${filterMenu === 'project' ? !selectedProjectId ? 'active' : '' : !selectedTagId ? 'active' : ''}`}
+                    ariaRole='button'
+                    ariaLabel={filterMenu === 'project' ? '全部项目' : '全部标签'}
+                    onClick={() => {
+                      if (filterMenu === 'project') setSelectedProjectId(null)
+                      else setSelectedTagId(null)
+                      setFilterMenu(null)
+                    }}
+                  >
+                    <Text>全部</Text>
+                  </View>
+                  {(filterMenu === 'project' ? projects : tags).map((item) => {
+                    const active = filterMenu === 'project' ? item.id === selectedProjectId : item.id === selectedTagId
+                    return (
+                      <View
+                        key={item.id}
+                        className={`filter-option ${active ? 'active' : ''}`}
+                        style={{ '--filter-color': theme.ideaPalette[item.colorSlot] } as CSSProperties}
+                        ariaRole='button'
+                        ariaLabel={`${filterMenu === 'project' ? '项目' : '标签'}：${item.name}`}
+                        onClick={() => {
+                          if (filterMenu === 'project') setSelectedProjectId(item.id)
+                          else setSelectedTagId(item.id)
+                          setFilterMenu(null)
+                        }}
+                      >
+                        <View className='filter-option-dot' />
+                        <Text>{item.name}</Text>
+                      </View>
+                    )
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+          )}
+        </View>
+
+        <Text className={`organize-total ${filtersActive ? 'filtered' : ''}`}>
+          {filteredIdeas.length}
+        </Text>
       </View>
 
       <ScrollView className='bucket-page' scrollY={!sortUi.active} enhanced showScrollbar={false}>
@@ -637,6 +772,7 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
           projects={projects}
           tags={tags}
           priority={key}
+          filtersActive={filtersActive}
           sortUi={sortUi}
           onOpenIdea={onOpenIdea}
           onGestureStart={beginGesture}
@@ -646,6 +782,7 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
           onSuppressClick={suppressRowClick}
           onHandleClick={handleHandleClick}
           onCopyIdea={onCopyIdea}
+          onClearFilters={clearFilters}
         />
       </ScrollView>
 
