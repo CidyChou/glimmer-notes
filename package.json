@@ -12,7 +12,8 @@
     "build:tt": "taro build --type tt",
     "typecheck": "tsc --noEmit",
     "test:backend": "node --test backend/test/*.test.mjs",
-    "test:history": "tsx --test src/services/historyStack.test.ts"
+    "test:history": "tsx --test src/services/historyStack.test.ts",
+    "test:markdown": "tsx --test src/utils/markdown.test.ts"
   },
   "browserslist": [
     "last 3 versions",
