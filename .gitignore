@@ -143,3 +143,5 @@ $RECYCLE.BIN/
 .vim/
 
 npm-cache/
+# Git worktrees
+.worktrees/
