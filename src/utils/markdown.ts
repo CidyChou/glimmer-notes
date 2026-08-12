@@ -22,16 +22,103 @@ export type BlockNode =
       items: ListItem[]
     }
 
-/** Task 1: block-only — inline is a single text node. Task 2 will expand this. */
-function toInline(text: string): InlineNode[] {
-  return [{ type: 'text', text }]
+/**
+ * Left-to-right inline parse for code, http(s) links, strong, and em.
+ * Only http:// and https:// URLs become link nodes.
+ */
+export function parseInline(text: string): InlineNode[] {
+  const nodes: InlineNode[] = []
+  let i = 0
+  let buf = ''
+
+  const flush = () => {
+    if (buf) {
+      nodes.push({ type: 'text', text: buf })
+      buf = ''
+    }
+  }
+
+  while (i < text.length) {
+    // `code`
+    if (text[i] === '`') {
+      const end = text.indexOf('`', i + 1)
+      if (end !== -1) {
+        flush()
+        nodes.push({ type: 'code', text: text.slice(i + 1, end) })
+        i = end + 1
+        continue
+      }
+    }
+
+    // [label](url) — only http(s) become links
+    if (text[i] === '[') {
+      const closeBracket = text.indexOf(']', i + 1)
+      if (closeBracket !== -1 && text[closeBracket + 1] === '(') {
+        const closeParen = text.indexOf(')', closeBracket + 2)
+        if (closeParen !== -1) {
+          const label = text.slice(i + 1, closeBracket)
+          const href = text.slice(closeBracket + 2, closeParen)
+          if (/^https?:\/\//i.test(href)) {
+            flush()
+            nodes.push({ type: 'link', href, children: parseInline(label) })
+            i = closeParen + 1
+            continue
+          }
+        }
+      }
+    }
+
+    // **strong**
+    if (text[i] === '*' && text[i + 1] === '*') {
+      const end = text.indexOf('**', i + 2)
+      if (end !== -1) {
+        flush()
+        nodes.push({ type: 'strong', children: parseInline(text.slice(i + 2, end)) })
+        i = end + 2
+        continue
+      }
+    }
+
+    // *em*
+    if (text[i] === '*') {
+      const end = text.indexOf('*', i + 1)
+      if (end !== -1) {
+        flush()
+        nodes.push({ type: 'em', children: parseInline(text.slice(i + 1, end)) })
+        i = end + 1
+        continue
+      }
+    }
+
+    // _em_
+    if (text[i] === '_') {
+      const end = text.indexOf('_', i + 1)
+      if (end !== -1) {
+        flush()
+        nodes.push({ type: 'em', children: parseInline(text.slice(i + 1, end)) })
+        i = end + 1
+        continue
+      }
+    }
+
+    buf += text[i]
+    i += 1
+  }
+
+  flush()
+  return nodes
 }
 
-const HEADING_RE = /^(#{1,3})\s+(.*)$/
-const BLOCKQUOTE_RE = /^>\s?(.*)$/
-const TASK_RE = /^-\s+\[([ xX])\]\s?(.*)$/
-const UNORDERED_RE = /^[-*]\s+(.*)$/
-const ORDERED_RE = /^(\d+)\.\s+(.*)$/
+function toInline(text: string): InlineNode[] {
+  return parseInline(text)
+}
+
+// Optional leading whitespace so indented "  - [ ] buy milk" is still a list item
+const HEADING_RE = /^\s*(#{1,3})\s+(.*)$/
+const BLOCKQUOTE_RE = /^\s*>\s?(.*)$/
+const TASK_RE = /^\s*([-*])\s+\[([ xX])\]\s?(.*)$/
+const UNORDERED_RE = /^\s*([-*])\s+(.*)$/
+const ORDERED_RE = /^\s*(\d+)\.\s+(.*)$/
 
 type LineKind =
   | { kind: 'blank' }
@@ -57,19 +144,19 @@ function classifyLine(line: string): LineKind {
   // Tasks before plain bullets: "- [ ] foo" also matches "- "
   const task = TASK_RE.exec(line)
   if (task) {
-    const mark = task[1]
+    const mark = task[2]
     return {
       kind: 'list',
       ordered: false,
       task: true,
       checked: mark === 'x' || mark === 'X',
-      text: task[2]
+      text: task[3]
     }
   }
 
   const unordered = UNORDERED_RE.exec(line)
   if (unordered) {
-    return { kind: 'list', ordered: false, text: unordered[1] }
+    return { kind: 'list', ordered: false, text: unordered[2] }
   }
 
   const ordered = ORDERED_RE.exec(line)
@@ -120,7 +207,6 @@ export function parseMarkdown(source: string): BlockNode[] {
         parts.push(next.text)
         i += 1
       }
-      // Consecutive quote lines join with newline for later inline (Task 2)
       blocks.push({
         type: 'blockquote',
         children: toInline(parts.join('\n'))
@@ -168,4 +254,62 @@ export function parseMarkdown(source: string): BlockNode[] {
   }
 
   return blocks
+}
+
+const TASK_LINE_RE = /^(\s*)([-*])\s+\[([ xX])\](.*)$/
+
+/**
+ * Flip task checkbox at 0-based source line index.
+ * Preserves indent, bullet, and trailing text. No-op if not a task line.
+ */
+export function toggleTaskAtLine(source: string, lineIndex: number): string {
+  const lines = source.split('\n')
+  if (lineIndex < 0 || lineIndex >= lines.length) return source
+
+  const m = TASK_LINE_RE.exec(lines[lineIndex])
+  if (!m) return source
+
+  const indent = m[1]
+  const bullet = m[2]
+  const mark = m[3]
+  const rest = m[4]
+  const nextMark = mark === ' ' ? 'x' : ' '
+  lines[lineIndex] = `${indent}${bullet} [${nextMark}]${rest}`
+  return lines.join('\n')
+}
+
+function stripInline(nodes: InlineNode[]): string {
+  return nodes
+    .map((n) => {
+      switch (n.type) {
+        case 'text':
+        case 'code':
+          return n.text
+        case 'strong':
+        case 'em':
+        case 'link':
+          return stripInline(n.children)
+      }
+    })
+    .join('')
+}
+
+/**
+ * Plain single-line summary without markdown markers (for list previews).
+ */
+export function stripMarkdown(source: string): string {
+  const blocks = parseMarkdown(source)
+  const parts: string[] = []
+
+  for (const b of blocks) {
+    if (b.type === 'list') {
+      for (const item of b.items) {
+        parts.push(stripInline(item.children))
+      }
+    } else {
+      parts.push(stripInline(b.children))
+    }
+  }
+
+  return parts.join(' ').replace(/\s+/g, ' ').trim()
 }
