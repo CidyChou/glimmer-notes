@@ -8,6 +8,7 @@ import { formatDay, formatTime } from '@/utils/date'
 import { getIdeaTitle, splitIdeaText } from '@/utils/ideaText'
 import type { Idea, IdeaDropTarget, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
 import { findIdeaProject, findIdeaTags } from '@/utils/tags'
+import { stripMarkdown } from '@/utils/markdown'
 import { useTheme } from '@/theme'
 import type { IdeaColorSlot } from '@/theme'
 import './index.css'
@@ -150,7 +151,7 @@ function Timeline({
       {ideas.map((idea) => {
         const content = splitIdeaText(idea.text)
         const title = getIdeaTitle(idea.text)
-        const details = content.details.replace(/\s+/g, ' ')
+        const details = stripMarkdown(content.details)
         const day = formatDay(idea.createdAt)
         const showDay = day !== previousDay
         const isSource = sortUi.ideaId === idea.id

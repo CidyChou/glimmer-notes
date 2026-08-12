@@ -71,7 +71,7 @@ export default function ComposerSheet({ open, title, details, projects, tags, se
           />
         </View>
         <View className='input-meta'>
-          <Text>整理页显示一行详情</Text>
+          <Text>支持基础 Markdown（列表、粗体、清单）</Text>
           <Text className={`input-count ${details.length ? 'has-value' : ''}`}>{details.length} 字详情</Text>
         </View>
       </View>

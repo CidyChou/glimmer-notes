@@ -8,6 +8,7 @@ import { scheduleSync } from '@/services/sync'
 import { copyText } from '@/utils/clipboard'
 import { formatDay, formatTime } from '@/utils/date'
 import { getIdeaTitle, splitIdeaText } from '@/utils/ideaText'
+import { stripMarkdown } from '@/utils/markdown'
 import { findIdeaProject, findIdeaTags } from '@/utils/tags'
 import type { Idea } from '@/types/idea'
 import { useTheme } from '@/theme'
@@ -94,7 +95,7 @@ export default function ArchivePage() {
                     <View className='archive-card-content'>
                       <View className='archive-card-main'>
                         <Text className='archive-card-title'>{getIdeaTitle(idea.text)}</Text>
-                        {!!content.details && <Text className='archive-card-details'>{content.details.replace(/\s+/g, ' ')}</Text>}
+                        {!!content.details && <Text className='archive-card-details'>{stripMarkdown(content.details)}</Text>}
                         <View className='archive-card-meta'>
                           <View className='archive-card-taxonomy'>
                             <View className='archive-card-tag'><View className='archive-card-tag-dot' /><Text>{project.name}</Text></View>
