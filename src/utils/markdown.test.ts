@@ -94,6 +94,17 @@ describe('inline', () => {
     assert.ok(types.includes('link'))
   })
 
+  it('keeps link href and label', () => {
+    const [p] = parseMarkdown('see [docs](https://example.com/path)')
+    assert.equal(p.type, 'paragraph')
+    const link = (p as { children: { type: string; href?: string; children?: { type: string; text?: string }[] }[] })
+      .children.find((c) => c.type === 'link')
+    assert.ok(link)
+    assert.equal(link!.href, 'https://example.com/path')
+    assert.equal(link!.children![0].type, 'text')
+    assert.equal(link!.children![0].text, 'docs')
+  })
+
   it('does not treat javascript: as link', () => {
     const [p] = parseMarkdown('[x](javascript:alert(1))')
     const children = (p as { children: { type: string }[] }).children
@@ -114,6 +125,69 @@ describe('inline', () => {
     assert.ok(itemTypes.includes('em'))
     assert.ok(itemTypes.includes('code'))
   })
+
+  it('leaves unclosed ** as literal text including asterisks', () => {
+    const [p] = parseMarkdown('**not closed')
+    assert.equal(p.type, 'paragraph')
+    const children = (p as { children: { type: string; text?: string }[] }).children
+    assert.ok(!children.some((c) => c.type === 'strong' || c.type === 'em'))
+    const text = children.map((c) => (c.type === 'text' ? c.text : '')).join('')
+    assert.equal(text, '**not closed')
+  })
+
+  it('does not create empty em from failed ** markers', () => {
+    const [p] = parseMarkdown('**x')
+    const children = (p as { children: { type: string; text?: string }[] }).children
+    assert.ok(!children.some((c) => c.type === 'em' || c.type === 'strong'))
+    assert.equal(children.map((c) => c.text ?? '').join(''), '**x')
+  })
+
+  it('requires non-empty spans for strong, em, and code', () => {
+    const [p] = parseMarkdown('**** ** ** `` **a** *b* `c`')
+    const children = (p as { children: { type: string }[] }).children
+    const types = children.map((c) => c.type)
+    // empty marker pairs stay text; real spans still parse
+    assert.ok(types.includes('strong'))
+    assert.ok(types.includes('em'))
+    assert.ok(types.includes('code'))
+    assert.ok(!children.some((c) => c.type === 'strong' && (c as { children: unknown[] }).children.length === 0))
+    assert.ok(!children.some((c) => c.type === 'code' && (c as { text: string }).text === ''))
+  })
+
+  it('treats _em_ only at soft word boundaries (not snake_case)', () => {
+    const [plain] = parseMarkdown('use snake_case and a_b_c names')
+    const plainChildren = (plain as { children: { type: string; text?: string }[] }).children
+    assert.ok(!plainChildren.some((c) => c.type === 'em'))
+    assert.equal(
+      plainChildren.map((c) => c.text ?? '').join(''),
+      'use snake_case and a_b_c names'
+    )
+
+    const [em] = parseMarkdown('say _italic_ please')
+    const emChildren = (em as { children: { type: string; children?: { text?: string }[] }[] }).children
+    assert.ok(emChildren.some((c) => c.type === 'em'))
+    const emNode = emChildren.find((c) => c.type === 'em')!
+    assert.equal(emNode.children![0].text, 'italic')
+  })
+
+  it('parses nested em inside strong', () => {
+    const [p] = parseMarkdown('**bold *and* more**')
+    const children = (p as { children: { type: string; children?: { type: string }[] }[] }).children
+    const strong = children.find((c) => c.type === 'strong')
+    assert.ok(strong)
+    const innerTypes = strong!.children!.map((c) => c.type)
+    assert.ok(innerTypes.includes('em'))
+  })
+
+  it('parses ordered list item inline', () => {
+    const [list] = parseMarkdown('1. get **milk**')
+    assert.equal(list.type, 'list')
+    assert.equal((list as { ordered: boolean }).ordered, true)
+    const types = (list as { items: { children: { type: string }[] }[] }).items[0].children.map(
+      (c) => c.type
+    )
+    assert.ok(types.includes('strong'))
+  })
 })
 
 describe('toggleTaskAtLine', () => {
@@ -132,6 +206,18 @@ describe('toggleTaskAtLine', () => {
     const src = 'hello'
     assert.equal(toggleTaskAtLine(src, 0), src)
   })
+
+  it('no-ops on out-of-bounds lineIndex', () => {
+    const src = '- [ ] a'
+    assert.equal(toggleTaskAtLine(src, -1), src)
+    assert.equal(toggleTaskAtLine(src, 99), src)
+  })
+
+  it('normalizes CRLF before toggle like parseMarkdown', () => {
+    const src = '- [ ] a\r\n- [x] b'
+    const next = toggleTaskAtLine(src, 0)
+    assert.equal(next, '- [x] a\n- [x] b')
+  })
 })
 
 describe('stripMarkdown', () => {
@@ -145,5 +231,10 @@ describe('stripMarkdown', () => {
     assert.ok(s.includes('a'))
     assert.ok(s.includes('b'))
     assert.ok(s.includes('c'))
+  })
+
+  it('returns empty string for empty input', () => {
+    assert.equal(stripMarkdown(''), '')
+    assert.equal(stripMarkdown('   '), '')
   })
 })

@@ -22,9 +22,15 @@ export type BlockNode =
       items: ListItem[]
     }
 
+/** Alphanumeric only — underscores use soft bounds so snake_case stays plain. */
+function isWordChar(ch: string | undefined): boolean {
+  return ch !== undefined && /[A-Za-z0-9]/.test(ch)
+}
+
 /**
  * Left-to-right inline parse for code, http(s) links, strong, and em.
  * Only http:// and https:// URLs become link nodes.
+ * Unclosed or empty marker spans stay literal text.
  */
 export function parseInline(text: string): InlineNode[] {
   const nodes: InlineNode[] = []
@@ -39,10 +45,10 @@ export function parseInline(text: string): InlineNode[] {
   }
 
   while (i < text.length) {
-    // `code`
+    // `code` — non-empty only
     if (text[i] === '`') {
       const end = text.indexOf('`', i + 1)
-      if (end !== -1) {
+      if (end !== -1 && end > i + 1) {
         flush()
         nodes.push({ type: 'code', text: text.slice(i + 1, end) })
         i = end + 1
@@ -68,21 +74,25 @@ export function parseInline(text: string): InlineNode[] {
       }
     }
 
-    // **strong**
+    // **strong** — non-empty only; failed ** must not fall through to *em*
     if (text[i] === '*' && text[i + 1] === '*') {
       const end = text.indexOf('**', i + 2)
-      if (end !== -1) {
+      if (end !== -1 && end > i + 2) {
         flush()
         nodes.push({ type: 'strong', children: parseInline(text.slice(i + 2, end)) })
         i = end + 2
         continue
       }
+      // Unclosed/empty **: emit first * as text; next loop sees remaining *
+      buf += text[i]
+      i += 1
+      continue
     }
 
-    // *em*
+    // *em* — non-empty; never open when next char is * (handled above)
     if (text[i] === '*') {
       const end = text.indexOf('*', i + 1)
-      if (end !== -1) {
+      if (end !== -1 && end > i + 1) {
         flush()
         nodes.push({ type: 'em', children: parseInline(text.slice(i + 1, end)) })
         i = end + 1
@@ -90,15 +100,23 @@ export function parseInline(text: string): InlineNode[] {
       }
     }
 
-    // _em_
-    if (text[i] === '_') {
-      const end = text.indexOf('_', i + 1)
-      if (end !== -1) {
-        flush()
-        nodes.push({ type: 'em', children: parseInline(text.slice(i + 1, end)) })
-        i = end + 1
-        continue
+    // _em_ only at soft bounds: open/close not adjacent to word chars outside
+    // so snake_case / a_b_c stay plain; _italic_ still works.
+    if (text[i] === '_' && !isWordChar(text[i - 1])) {
+      let end = i + 1
+      while (end < text.length) {
+        const close = text.indexOf('_', end)
+        if (close === -1) break
+        if (close > i + 1 && !isWordChar(text[close + 1])) {
+          flush()
+          nodes.push({ type: 'em', children: parseInline(text.slice(i + 1, close)) })
+          i = close + 1
+          end = -1
+          break
+        }
+        end = close + 1
       }
+      if (end === -1) continue
     }
 
     buf += text[i]
@@ -107,10 +125,6 @@ export function parseInline(text: string): InlineNode[] {
 
   flush()
   return nodes
-}
-
-function toInline(text: string): InlineNode[] {
-  return parseInline(text)
 }
 
 // Optional leading whitespace so indented "  - [ ] buy milk" is still a list item
@@ -192,7 +206,7 @@ export function parseMarkdown(source: string): BlockNode[] {
       blocks.push({
         type: 'heading',
         level: classified.level,
-        children: toInline(classified.text)
+        children: parseInline(classified.text)
       })
       i += 1
       continue
@@ -209,7 +223,7 @@ export function parseMarkdown(source: string): BlockNode[] {
       }
       blocks.push({
         type: 'blockquote',
-        children: toInline(parts.join('\n'))
+        children: parseInline(parts.join('\n'))
       })
       continue
     }
@@ -224,7 +238,7 @@ export function parseMarkdown(source: string): BlockNode[] {
 
         const item: ListItem = {
           lineIndex: i,
-          children: toInline(next.text)
+          children: parseInline(next.text)
         }
         if (next.task) {
           item.task = true
@@ -249,7 +263,7 @@ export function parseMarkdown(source: string): BlockNode[] {
     }
     blocks.push({
       type: 'paragraph',
-      children: toInline(parts.join('\n'))
+      children: parseInline(parts.join('\n'))
     })
   }
 
@@ -263,7 +277,8 @@ const TASK_LINE_RE = /^(\s*)([-*])\s+\[([ xX])\](.*)$/
  * Preserves indent, bullet, and trailing text. No-op if not a task line.
  */
 export function toggleTaskAtLine(source: string, lineIndex: number): string {
-  const lines = source.split('\n')
+  const normalized = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = normalized.split('\n')
   if (lineIndex < 0 || lineIndex >= lines.length) return source
 
   const m = TASK_LINE_RE.exec(lines[lineIndex])
