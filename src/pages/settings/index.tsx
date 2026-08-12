@@ -6,7 +6,9 @@ import {
   getSyncStatus,
   loginAndSync,
   logoutSync,
+  resolveInitialSync,
   retrySync,
+  setAutoSyncEnabled,
   subscribeSyncData,
   subscribeSyncStatus
 } from '@/services/sync'
@@ -42,6 +44,7 @@ export default function SettingsPage() {
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [loginError, setLoginError] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
+  const [resolvingConflict, setResolvingConflict] = useState(false)
   const [projects, setProjects] = useState<IdeaProject[]>(loadProjects)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectColor, setNewProjectColor] = useState<IdeaColorSlot>(1)
@@ -70,6 +73,7 @@ export default function SettingsPage() {
 
   const syncTitle = useMemo(() => ({
     'signed-out': '仅本地保存',
+    conflict: '需要选择同步方式',
     syncing: '正在同步',
     synced: '已连接云端',
     offline: '离线使用中',
@@ -106,11 +110,11 @@ export default function SettingsPage() {
     setLoggingIn(true)
     setLoginError('')
     try {
-      await loginAndSync(password)
+      const result = await loginAndSync(password)
       setLoginOpen(false)
       setPassword('')
-      setNotice('云端同步已开启')
-      setTimeout(() => setNotice(''), 1600)
+      setNotice(result === 'conflict' ? '请确认首次同步方式' : '云端同步已开启')
+      setTimeout(() => setNotice(''), 1800)
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : '登录失败，请重试')
     } finally {
@@ -119,6 +123,7 @@ export default function SettingsPage() {
   }
 
   const handleRetry = async () => {
+    if (syncStatus.phase === 'conflict') return
     try {
       await retrySync()
     } catch {
@@ -131,6 +136,21 @@ export default function SettingsPage() {
     logoutSync()
     setNotice('已退出云端同步，本地数据保留')
     setTimeout(() => setNotice(''), 1800)
+  }
+
+  const handleConflictResolution = async (choice: 'replace-local' | 'merge') => {
+    if (resolvingConflict) return
+    setResolvingConflict(true)
+    try {
+      await resolveInitialSync(choice)
+      setNotice(choice === 'merge' ? '本地与云端内容已合并' : '已使用云端内容')
+      setTimeout(() => setNotice(''), 1800)
+    } catch {
+      setNotice('处理失败，本地数据仍然保留')
+      setTimeout(() => setNotice(''), 1800)
+    } finally {
+      setResolvingConflict(false)
+    }
   }
 
   const addTag = () => {
@@ -516,24 +536,60 @@ export default function SettingsPage() {
               <View className='info-copy'>
                 <View className='sync-title-row'>
                   <Text className='info-title'>{syncTitle}</Text>
-                  <Text className='sync-state-label'>{syncStatus.phase === 'synced' ? '已同步' : '本地安全'}</Text>
+                  <Text className='sync-state-label'>
+                    {syncStatus.phase === 'synced' ? '已同步' : syncStatus.phase === 'conflict' ? '待选择' : '本地安全'}
+                  </Text>
                 </View>
                 <Text className='info-description'>{syncStatus.detail}</Text>
-                <View className='sync-actions'>
-                  {!syncStatus.authenticated ? (
-                    <Button className='sync-action primary' onClick={openLogin}>连接云端</Button>
-                  ) : (
-                    <>
+                {syncStatus.phase === 'conflict' && syncStatus.conflict ? (
+                  <View className='sync-conflict' ariaRole='alert'>
+                    <View className='sync-conflict-counts'>
+                      <View><Text className='sync-conflict-number'>{syncStatus.conflict.localIdeaCount}</Text><Text>条本地内容</Text></View>
+                      <View><Text className='sync-conflict-number'>{syncStatus.conflict.remoteIdeaCount}</Text><Text>条云端内容</Text></View>
+                    </View>
+                    <Text className='sync-conflict-copy'>合并会保留两边内容，并按最后修改时间处理同一条记录。</Text>
+                    <View className='sync-conflict-actions'>
                       <Button
-                        className='sync-action primary'
-                        disabled={syncStatus.phase === 'syncing'}
-                        loading={syncStatus.phase === 'syncing'}
-                        onClick={() => void handleRetry()}
-                      >立即同步</Button>
-                      <Button className='sync-action secondary' onClick={handleLogout}>退出同步</Button>
-                    </>
-                  )}
-                </View>
+                        className='sync-conflict-button primary'
+                        disabled={resolvingConflict}
+                        loading={resolvingConflict}
+                        onClick={() => void handleConflictResolution('merge')}
+                      >合并两边内容</Button>
+                      <Button
+                        className='sync-conflict-button secondary'
+                        disabled={resolvingConflict}
+                        onClick={() => void handleConflictResolution('replace-local')}
+                      >使用云端替换本地</Button>
+                    </View>
+                  </View>
+                ) : (
+                  <View className='sync-actions'>
+                    {!syncStatus.authenticated ? (
+                    <Button className='sync-action primary' onClick={openLogin}>连接云端</Button>
+                    ) : (
+                      <>
+                        <Button
+                          className='sync-action primary'
+                          disabled={syncStatus.phase === 'syncing'}
+                          loading={syncStatus.phase === 'syncing'}
+                          onClick={() => void handleRetry()}
+                        >立即同步</Button>
+                        <Button className='sync-action secondary' onClick={handleLogout}>退出同步</Button>
+                      </>
+                    )}
+                  </View>
+                )}
+                {syncStatus.phase !== 'conflict' && (
+                  <Button
+                    className={`sync-auto-toggle ${syncStatus.autoSyncEnabled ? 'active' : ''}`}
+                    ariaLabel={`自动同步${syncStatus.autoSyncEnabled ? '已开启' : '已关闭'}`}
+                    onClick={() => setAutoSyncEnabled(!syncStatus.autoSyncEnabled)}
+                  >
+                    <View className='sync-auto-track'><View className='sync-auto-knob' /></View>
+                    <Text>自动同步</Text>
+                    <Text className='sync-auto-state'>{syncStatus.autoSyncEnabled ? '已开启' : '已关闭'}</Text>
+                  </Button>
+                )}
               </View>
             </View>
             <View

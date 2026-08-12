@@ -1,20 +1,31 @@
 import Taro from '@tarojs/taro'
-import { isDemoOnlyIdeaSet } from '@/constants/demoSeeds'
-import { loadIdeaState, saveIdeaState } from '@/services/ideaStorage'
+import { isDemoSeedId, isDemoSeedText, isDemoOnlyIdeaSet } from '@/constants/demoSeeds'
+import { DEFAULT_PROJECT, loadIdeaState, saveIdeaState } from '@/services/ideaStorage'
 import { reconcileIdeaHistory } from '@/services/ideaHistory'
 import { mergeSyncStates } from '@/services/syncMerge'
 import { DEFAULT_PROJECT_ID, LEGACY_PROJECT_TAG_ID } from '@/types/idea'
 import type { Idea, IdeaProject, IdeaTag, IdeaTombstone } from '@/types/idea'
 
 const TOKEN_STORAGE_KEY = 'idea-space-sync-token-v1'
+const AUTO_SYNC_STORAGE_KEY = 'idea-space-auto-sync-v1'
+const SYNC_INITIALIZED_STORAGE_KEY = 'idea-space-sync-initialized-v1'
 const API_BASE_URL = __API_BASE_URL__.replace(/\/$/, '')
 const SYNC_DELAY_MS = 350
 
-export type SyncPhase = 'signed-out' | 'syncing' | 'synced' | 'offline' | 'error'
+export type SyncPhase = 'signed-out' | 'conflict' | 'syncing' | 'synced' | 'offline' | 'error'
+
+export type InitialSyncChoice = 'replace-local' | 'merge'
+
+export interface SyncConflict {
+  localIdeaCount: number
+  remoteIdeaCount: number
+}
 
 export interface SyncStatus {
   phase: SyncPhase
   authenticated: boolean
+  autoSyncEnabled: boolean
+  conflict: SyncConflict | null
   detail: string
   lastSyncedAt: number | null
 }
@@ -49,11 +60,34 @@ function loadToken(): string {
   }
 }
 
+function loadAutoSyncEnabled(): boolean {
+  try {
+    return Taro.getStorageSync(AUTO_SYNC_STORAGE_KEY) !== false
+  } catch {
+    return true
+  }
+}
+
+function loadSyncInitialized(existingToken: string): boolean {
+  if (!existingToken) return false
+  try {
+    return Taro.getStorageSync(SYNC_INITIALIZED_STORAGE_KEY) !== false
+  } catch {
+    return true
+  }
+}
+
 let token = loadToken()
+let autoSyncEnabled = loadAutoSyncEnabled()
+let syncInitialized = loadSyncInitialized(token)
 let status: SyncStatus = {
   phase: token ? 'offline' : 'signed-out',
   authenticated: Boolean(token),
-  detail: token ? '等待连接云端' : '登录后可在设备间同步',
+  autoSyncEnabled,
+  conflict: null,
+  detail: token
+    ? autoSyncEnabled ? '等待连接云端' : '自动同步已关闭，可手动同步'
+    : '登录后可在设备间同步',
   lastSyncedAt: null
 }
 const statusListeners = new Set<StatusListener>()
@@ -62,19 +96,73 @@ let syncTimer: ReturnType<typeof setTimeout> | null = null
 let syncPromise: Promise<void> | null = null
 let initializePromise: Promise<void> | null = null
 let rerunRequested = false
+let pendingRemoteState: SyncResponse | null = null
 
 function updateStatus(next: Partial<SyncStatus>) {
   status = { ...status, ...next }
   statusListeners.forEach((listener) => listener(status))
 }
 
-function storeToken(next: string) {
+function storeToken(next: string, initialized = syncInitialized) {
   token = next
+  syncInitialized = next ? initialized : false
   try {
-    if (next) Taro.setStorageSync(TOKEN_STORAGE_KEY, next)
-    else Taro.removeStorageSync(TOKEN_STORAGE_KEY)
+    if (next) {
+      Taro.setStorageSync(TOKEN_STORAGE_KEY, next)
+      Taro.setStorageSync(SYNC_INITIALIZED_STORAGE_KEY, syncInitialized)
+    } else {
+      Taro.removeStorageSync(TOKEN_STORAGE_KEY)
+      Taro.removeStorageSync(SYNC_INITIALIZED_STORAGE_KEY)
+    }
   } catch (error) {
     console.warn('[IdeaSpace] save sync session failed', error)
+  }
+}
+
+function markSyncInitialized() {
+  syncInitialized = true
+  try {
+    Taro.setStorageSync(SYNC_INITIALIZED_STORAGE_KEY, true)
+  } catch (error) {
+    console.warn('[IdeaSpace] save sync initialization failed', error)
+  }
+}
+
+function stripDemoDefaults(state: ReturnType<typeof loadIdeaState>) {
+  const demoIds = new Set(
+    state.ideas
+      .filter((idea) => isDemoSeedId(idea.id) || isDemoSeedText(idea.text))
+      .map((idea) => idea.id)
+  )
+  const ideas = state.ideas.filter((idea) => !demoIds.has(idea.id))
+  const tombstones = state.tombstones.filter((item) => !demoIds.has(item.id) && !isDemoSeedId(item.id))
+  const usedProjectIds = new Set(ideas.map((idea) => idea.projectId))
+  const usedTagIds = new Set(ideas.flatMap((idea) => idea.tagIds))
+  return {
+    ideas,
+    projects: state.projects.filter((project) => project.isDefault || usedProjectIds.has(project.id)),
+    tags: state.tags.filter((tag) => usedTagIds.has(tag.id)),
+    tombstones
+  }
+}
+
+function remoteHasContent(remote: SyncResponse): boolean {
+  return remote.ideas.length > 0 || remote.tombstones.length > 0 ||
+    Boolean(remote.tags?.length) || Boolean(remote.projects?.some((project) => !project.isDefault))
+}
+
+function localHasRealContent(local: ReturnType<typeof loadIdeaState>): boolean {
+  return stripDemoDefaults(local).ideas.length > 0 ||
+    stripDemoDefaults(local).tombstones.length > 0 ||
+    local.tags.length > 0 || local.projects.some((project) => !project.isDefault)
+}
+
+function remoteToSyncState(remote: SyncResponse) {
+  return {
+    ideas: remote.ideas,
+    projects: remote.projects?.length ? remote.projects : [DEFAULT_PROJECT],
+    tags: remote.tags || [],
+    tombstones: remote.tombstones
   }
 }
 
@@ -183,6 +271,44 @@ async function performSync(initial: boolean) {
   })
 }
 
+async function inspectInitialSync(): Promise<void> {
+  const local = loadIdeaState()
+  const remote = await request<SyncResponse>('/api/sync', 'GET')
+  pendingRemoteState = remote
+
+  const localIsOnlyDemo = !localHasRealContent(local)
+  if (localIsOnlyDemo && remoteHasContent(remote)) {
+    applyServerState(remote, true)
+  } else if (localHasRealContent(local) && remoteHasContent(remote)) {
+    updateStatus({
+      phase: 'conflict',
+      authenticated: true,
+      conflict: {
+        localIdeaCount: stripDemoDefaults(local).ideas.length,
+        remoteIdeaCount: remote.ideas.length
+      },
+      detail: '本地与云端都有内容，请选择同步方式'
+    })
+    return
+  } else if (!remoteHasContent(remote)) {
+    const upload = localIsOnlyDemo ? stripDemoDefaults(local) : local
+    const synced = await request<SyncResponse>('/api/sync', 'POST', upload)
+    applyServerState(synced, true)
+  } else {
+    applyServerState(remote, true)
+  }
+
+  pendingRemoteState = null
+  markSyncInitialized()
+  updateStatus({
+    phase: 'synced',
+    authenticated: true,
+    conflict: null,
+    detail: '本地与云端已同步',
+    lastSyncedAt: Date.now()
+  })
+}
+
 async function runSync(initial = false): Promise<void> {
   if (!token) {
     updateStatus({ phase: 'signed-out', authenticated: false, detail: '登录后可在设备间同步' })
@@ -238,7 +364,7 @@ export function subscribeSyncData(listener: DataListener): () => void {
 }
 
 export function scheduleSync(): void {
-  if (!token) return
+  if (!token || !autoSyncEnabled || status.phase === 'conflict') return
   if (syncTimer) clearTimeout(syncTimer)
   syncTimer = setTimeout(() => {
     syncTimer = null
@@ -255,7 +381,13 @@ export async function initializeSync(): Promise<void> {
   initializePromise = (async () => {
     updateStatus({ phase: 'syncing', authenticated: true, detail: '正在连接云端…' })
     await request('/api/auth/session', 'GET')
-    await runSync(true)
+    if (!syncInitialized) await inspectInitialSync()
+    else if (autoSyncEnabled) await runSync()
+    else updateStatus({
+      phase: 'synced',
+      authenticated: true,
+      detail: '自动同步已关闭，可手动同步'
+    })
   })()
   try {
     await initializePromise
@@ -271,12 +403,13 @@ export async function initializeSync(): Promise<void> {
   }
 }
 
-export async function loginAndSync(password: string): Promise<void> {
+export async function loginAndSync(password: string): Promise<'synced' | 'conflict'> {
   updateStatus({ phase: 'syncing', authenticated: false, detail: '正在验证访问口令…' })
   try {
     const result = await request<{ token: string; expiresAt: number }>('/api/auth/login', 'POST', { password })
-    storeToken(result.token)
-    await runSync(true)
+    storeToken(result.token, false)
+    await inspectInitialSync()
+    return status.phase === 'conflict' ? 'conflict' : 'synced'
   } catch (error) {
     if (!token) updateStatus({ phase: 'signed-out', authenticated: false, detail: '登录后可在设备间同步' })
     if (error instanceof ApiError && error.statusCode === 401) throw new Error('访问口令不正确')
@@ -286,27 +419,99 @@ export async function loginAndSync(password: string): Promise<void> {
 }
 
 export function logoutSync(): void {
+  pendingRemoteState = null
   storeToken('')
-  updateStatus({ phase: 'signed-out', authenticated: false, detail: '已退出云端同步', lastSyncedAt: null })
+  updateStatus({ phase: 'signed-out', authenticated: false, conflict: null, detail: '已退出云端同步', lastSyncedAt: null })
 }
 
 export async function retrySync(): Promise<void> {
   if (!token) return
-  await initializeSync()
+  await runSync()
+}
+
+export function getAutoSyncEnabled(): boolean {
+  return autoSyncEnabled
+}
+
+export function setAutoSyncEnabled(enabled: boolean): void {
+  autoSyncEnabled = enabled
+  try {
+    Taro.setStorageSync(AUTO_SYNC_STORAGE_KEY, enabled)
+  } catch (error) {
+    console.warn('[IdeaSpace] save auto sync preference failed', error)
+  }
+  updateStatus({
+    autoSyncEnabled: enabled,
+    detail: enabled
+      ? token ? '自动同步已开启' : '登录后将自动同步'
+      : token ? '自动同步已关闭，可手动同步' : '自动同步已关闭'
+  })
+  if (enabled && token && status.phase !== 'conflict') scheduleSync()
+}
+
+export async function resolveInitialSync(choice: InitialSyncChoice): Promise<void> {
+  if (!token || !pendingRemoteState || status.phase !== 'conflict') return
+  updateStatus({ phase: 'syncing', authenticated: true, detail: '正在处理首次同步…' })
+  const remote = pendingRemoteState
+  if (choice === 'replace-local') {
+    applyServerState(remote, true)
+  } else {
+    const local = stripDemoDefaults(loadIdeaState())
+    const merged = mergeSyncStates(local, remoteToSyncState(remote))
+    const result = await request<SyncResponse>('/api/sync', 'POST', merged)
+    applyServerState(result, true)
+  }
+  pendingRemoteState = null
+  markSyncInitialized()
+  updateStatus({
+    phase: 'synced',
+    authenticated: true,
+    conflict: null,
+    detail: choice === 'merge' ? '本地与云端内容已合并' : '已使用云端内容',
+    lastSyncedAt: Date.now()
+  })
+}
+
+export async function manualSync(): Promise<void> {
+  if (!token) {
+    Taro.eventCenter.trigger('idea-sync-feedback', '请先在设置中连接云端')
+    return
+  }
+  if (status.phase === 'conflict') {
+    Taro.eventCenter.trigger('idea-sync-feedback', '请先在设置中选择首次同步方式')
+    return
+  }
+  Taro.eventCenter.trigger('idea-sync-feedback', '正在保存并同步…')
+  try {
+    await runSync()
+    Taro.eventCenter.trigger('idea-sync-feedback', '已保存并同步')
+  } catch {
+    Taro.eventCenter.trigger('idea-sync-feedback', '云端保存失败，本地数据已保存')
+  }
 }
 
 export function startSyncLifecycle(): () => void {
   if (process.env.TARO_ENV === 'h5' && typeof window !== 'undefined') {
     const handleOnline = () => {
-      if (token) void initializeSync()
+      if (token && autoSyncEnabled) void initializeSync()
+    }
+    const handleSaveShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        void manualSync()
+      }
     }
     window.addEventListener('online', handleOnline)
+    window.addEventListener('keydown', handleSaveShortcut)
     void initializeSync()
-    return () => window.removeEventListener('online', handleOnline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('keydown', handleSaveShortcut)
+    }
   }
 
   const handleNetwork = (result: Taro.onNetworkStatusChange.CallbackResult) => {
-    if (result.isConnected && token) void initializeSync()
+    if (result.isConnected && token && autoSyncEnabled) void initializeSync()
   }
   Taro.onNetworkStatusChange(handleNetwork)
   void initializeSync()

@@ -100,6 +100,16 @@ export default function IndexPage() {
     })
   }, [])
 
+  useEffect(() => {
+    const handleSyncFeedback = (message: unknown) => {
+      if (typeof message === 'string' && message) flash(message)
+    }
+    Taro.eventCenter.on('idea-sync-feedback', handleSyncFeedback)
+    return () => {
+      Taro.eventCenter.off('idea-sync-feedback', handleSyncFeedback)
+    }
+  }, [])
+
   const activeIdeas = useMemo(() => ideas.filter((idea) => idea.archivedAt === null), [ideas])
   const selectedIdea = useMemo(() => activeIdeas.find((idea) => idea.id === selectedId) || null, [activeIdeas, selectedId])
   const todayCount = useMemo(() => activeIdeas.filter((idea) => isToday(idea.createdAt)).length, [activeIdeas])

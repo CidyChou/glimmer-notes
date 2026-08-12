@@ -42,6 +42,7 @@ export default function ComposerSheet({ open, title, details, projects, tags, se
         <View className='title-field'>
           <Text className='input-label'>标题</Text>
           <Input
+            key={open ? 'composer-title-open' : 'composer-title-closed'}
             className='title-input'
             value={title}
             focus={open}

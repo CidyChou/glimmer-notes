@@ -78,6 +78,8 @@ const EMPTY_SORT_UI: SortUi = {
 const ACTIVATE_DISTANCE = 5
 /** On row body, prefer horizontal intent so vertical list scroll still works. */
 const ROW_SCROLL_RATIO = 1.35
+/** Lift the light-dot above the fingertip so the finger doesn't cover it. Hit-testing still uses the raw touch point. */
+const GHOST_Y_OFFSET = 40
 
 function bucketIdeas(ideas: Idea[], priority: PriorityKey) {
   return ideas
@@ -307,7 +309,7 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     const el = resolveGhostEl()
     if (!el) return false
     el.style.left = `${x}px`
-    el.style.top = `${y}px`
+    el.style.top = `${y - GHOST_Y_OFFSET}px`
     return true
   }
 
@@ -692,7 +694,7 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
           style={{
             '--ghost-color': theme.ideaPalette[sortUi.ideaColorSlot],
             left: `${sortUi.x}px`,
-            top: `${sortUi.y}px`
+            top: `${sortUi.y - GHOST_Y_OFFSET}px`
           } as CSSProperties}
         >
           <View className='drag-ghost-aura' />
