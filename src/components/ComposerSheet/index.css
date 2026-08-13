@@ -228,6 +228,102 @@
 .composer-tag.project.active .composer-tag-radio view { background: var(--tag-color); }
 .composer-tags-empty { display: block; min-height: 44px; line-height: 44px; color: var(--text-disabled); font-size: 10px; }
 
+.composer-project-add {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px dashed rgba(var(--border-rgb), .16);
+  border-radius: 12px;
+  color: var(--text-muted);
+  background: rgba(var(--surface-low-rgb), .48);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 420;
+  line-height: 1;
+  transition: transform .14s, border-color .16s, color .16s, background-color .16s;
+}
+
+.composer-project-add:active { transform: scale(.95); }
+.composer-project-add.active {
+  border-style: solid;
+  border-color: rgba(var(--accent-rgb), .4);
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), .07);
+}
+
+.composer-project-create {
+  max-height: 0;
+  margin-top: 0;
+  padding: 0 6px 0 10px;
+  overflow: hidden;
+  border: 0 solid rgba(var(--border-rgb), .085);
+  border-radius: 12px;
+  background: rgba(var(--page-bg-rgb), .6);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.composer-project-create.show {
+  min-height: 44px;
+  max-height: 44px;
+  margin-top: 7px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  border-width: 1px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.composer-project-name-input {
+  min-width: 0;
+  height: 34px;
+  flex: 1;
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 34px;
+  caret-color: var(--accent);
+}
+
+.composer-project-name-input::placeholder,
+.composer-project-name-input .weui-input::placeholder {
+  color: var(--text-disabled);
+  opacity: 1;
+}
+
+.composer-project-save {
+  width: auto;
+  min-width: 48px;
+  height: 34px;
+  margin: 0;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--on-accent);
+  background: var(--accent);
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 34px;
+  transition: transform .14s, opacity .16s, color .16s, background-color .16s;
+}
+
+.composer-project-save:not([disabled]):active { transform: scale(.96); }
+.composer-project-save[disabled] {
+  color: var(--text-disabled);
+  background: var(--surface-disabled);
+}
+
+.composer-project-cancel {
+  padding: 8px 5px;
+  color: var(--text-muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
 .composer-foot {
   padding: 12px 2px 1px;
   display: flex;
@@ -322,6 +418,8 @@
   .input-shell,
   .input-count,
   .composer-tag,
+  .composer-project-add,
+  .composer-project-save,
   .save-btn { transition-duration: .01ms; }
 }
 

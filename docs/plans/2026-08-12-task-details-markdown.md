@@ -1,5 +1,7 @@
 # Task Details Markdown Implementation Plan
 
+**状态：** 已完成（2026-08-12）
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 任务详情支持基础 Markdown：阅读渲染、编辑预览、任务清单可勾选写回，列表摘要去格式。

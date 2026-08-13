@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test:backend": "node --test backend/test/*.test.mjs",
     "test:history": "tsx --test src/services/historyStack.test.ts",
+    "test:idea-text": "tsx --test src/utils/ideaText.test.ts",
+    "test:list-continue": "tsx --test src/utils/listContinue.test.ts",
     "test:markdown": "tsx --test src/utils/markdown.test.ts"
   },
   "browserslist": [

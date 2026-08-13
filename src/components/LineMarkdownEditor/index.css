@@ -1,0 +1,179 @@
+.line-md-editor {
+  width: 100%;
+  max-height: 240px;
+  overflow: hidden;
+}
+
+.line-md-continuous {
+  position: relative;
+  width: 100%;
+  min-height: 30px;
+  max-height: 240px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.line-md-live-layer {
+  position: relative;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  left: 0;
+  padding: 2px;
+  pointer-events: none;
+  box-sizing: border-box;
+  will-change: transform;
+}
+
+.line-md-live-row {
+  position: relative;
+  width: 100%;
+  min-height: 26px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.line-md-live-row.rendered > .line-md-live-measure {
+  position: absolute;
+  inset: 0;
+}
+
+.line-md-live-measure {
+  display: block;
+  width: 100%;
+  min-height: 26px;
+  visibility: hidden;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 26px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
+}
+
+.line-md-live-measure.visible {
+  visibility: visible;
+  color: var(--text-primary);
+}
+
+.line-md-live-measure.placeholder.visible {
+  color: var(--text-disabled);
+}
+
+.line-md-live-rendered {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+}
+
+.line-md-textarea {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 30px;
+  max-height: 240px;
+  padding: 2px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow-y: auto;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 26px;
+  caret-color: var(--accent);
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.line-md-textarea .taro-textarea,
+.line-md-textarea .weui-textarea {
+  width: 100%;
+  min-height: 100%;
+  /* Leave a small scroll runway so the final-line caret is not clipped by the
+     textarea viewport after a custom Enter insertion. */
+  padding: 0 0 4px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: transparent;
+  font: inherit;
+  line-height: 26px;
+  caret-color: var(--accent);
+  box-sizing: border-box;
+}
+
+.line-md-textarea::placeholder,
+.line-md-textarea .taro-textarea::placeholder,
+.line-md-textarea .weui-textarea::placeholder {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  opacity: 0;
+}
+
+.line-md-textarea::selection,
+.line-md-textarea .taro-textarea::selection,
+.line-md-textarea .weui-textarea::selection {
+  color: transparent;
+  background: rgba(var(--accent-rgb), .24);
+}
+
+.line-md-preview {
+  min-height: 22px;
+}
+
+.line-md-preview .md-p,
+.line-md-preview .md-h,
+.line-md-preview .md-quote,
+.line-md-preview .md-list {
+  margin-bottom: 0;
+}
+
+.line-md-preview .md-task {
+  align-items: center;
+  min-height: 24px;
+}
+
+.line-md-preview .md-checkbox {
+  width: 20px;
+  height: 20px;
+  margin-top: 0;
+}
+
+.line-md-live-preview {
+  width: 100%;
+  min-height: 26px;
+}
+
+.line-md-live-preview .md-p,
+.line-md-live-preview .md-h,
+.line-md-live-preview .md-quote,
+.line-md-live-preview .md-list,
+.line-md-live-preview .md-li {
+  min-height: 26px;
+  line-height: 26px;
+}
+
+.line-md-live-preview .md-list {
+  gap: 0;
+  padding: 0;
+}
+
+.line-md-live-preview .md-marker,
+.line-md-live-preview .md-li-body,
+.line-md-live-preview .md-p-text {
+  line-height: 26px;
+}
+
+.line-md-live-preview .md-checkbox.interactive {
+  pointer-events: auto;
+  cursor: pointer;
+}

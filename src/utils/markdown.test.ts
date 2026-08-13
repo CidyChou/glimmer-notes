@@ -180,9 +180,10 @@ describe('inline', () => {
   })
 
   it('parses ordered list item inline', () => {
-    const [list] = parseMarkdown('1. get **milk**')
+    const [list] = parseMarkdown('9. get **milk**')
     assert.equal(list.type, 'list')
     assert.equal((list as { ordered: boolean }).ordered, true)
+    assert.equal((list as { items: { marker?: string }[] }).items[0].marker, '9.')
     const types = (list as { items: { children: { type: string }[] }[] }).items[0].children.map(
       (c) => c.type
     )

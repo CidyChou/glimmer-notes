@@ -1,18 +1,30 @@
-import { Button, Input, ScrollView, Text, Textarea, View } from '@tarojs/components'
-import { useState } from 'react'
+import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import MarkdownView from '@/components/MarkdownView'
+import LineMarkdownEditor from '@/components/LineMarkdownEditor'
+import type { LineMarkdownCommitReason } from '@/components/LineMarkdownEditor'
 import { PRIORITY_META, PRIORITY_ORDER } from '@/constants/priorities'
 import { formatDetailTime } from '@/utils/date'
-import { composeIdeaText, splitIdeaText } from '@/utils/ideaText'
-import { toggleTaskAtLine } from '@/utils/markdown'
+import { splitIdeaText } from '@/utils/ideaText'
 import type { Idea, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
 import { useTheme } from '@/theme'
 import type { IdeaColorSlot } from '@/theme'
 import './index.css'
 
-type EditorMode = 'read' | 'edit'
-type EditTab = 'source' | 'preview'
+interface DrawerDragState {
+  active: boolean
+  startY: number
+  lastY: number
+  lastTime: number
+  offset: number
+  velocity: number
+}
+
+const DRAWER_CLOSE_RATIO = 0.22
+const DRAWER_CLOSE_MIN_DISTANCE = 88
+const DRAWER_FLING_MIN_DISTANCE = 36
+const DRAWER_FLING_VELOCITY = 0.55
+const DRAWER_CLOSE_DURATION = 240
 
 interface Props {
   idea: Idea
@@ -24,8 +36,7 @@ interface Props {
   onProjectChange: (projectId: string) => void
   onCreateProject: (name: string, colorSlot: IdeaColorSlot) => IdeaProject | null
   onTagToggle: (tagId: string) => void
-  onSave: (title: string, details: string) => void
-  onToggleTaskLine: (lineIndex: number) => void
+  onAutoSave: (title: string, details: string, reason: LineMarkdownCommitReason) => void
   onTogglePin: () => void
   onCopy: () => void
   onArchive: () => void
@@ -42,8 +53,7 @@ export default function DetailSheet({
   onProjectChange,
   onCreateProject,
   onTagToggle,
-  onSave,
-  onToggleTaskLine,
+  onAutoSave,
   onTogglePin,
   onCopy,
   onArchive,
@@ -51,37 +61,57 @@ export default function DetailSheet({
 }: Props) {
   const { theme } = useTheme()
   const live = splitIdeaText(idea.text)
-  const [mode, setMode] = useState<EditorMode>('read')
-  const [editTab, setEditTab] = useState<EditTab>('source')
   const [title, setTitle] = useState(live.title)
   const [details, setDetails] = useState(live.details)
+  const titleRef = useRef(title)
+  const detailsRef = useRef(details)
+  const onAutoSaveRef = useRef(onAutoSave)
+  onAutoSaveRef.current = onAutoSave
   const [projectCreateOpen, setProjectCreateOpen] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectColor, setNewProjectColor] = useState<IdeaColorSlot>(2)
+  const [closing, setClosing] = useState(false)
+  const sheetRef = useRef<HTMLElement | null>(null)
+  const dragHandleRef = useRef<HTMLElement | null>(null)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const closeStartedRef = useRef(false)
+  const onCloseRef = useRef(onClose)
+  const dragRef = useRef<DrawerDragState>({
+    active: false,
+    startY: 0,
+    lastY: 0,
+    lastTime: 0,
+    offset: 0,
+    velocity: 0
+  })
+  onCloseRef.current = onClose
 
-  const hasTitle = !!title.trim()
-  const hasChanges =
-    composeIdeaText(title, details) !== composeIdeaText(live.title, live.details)
-
-  const enterEdit = () => {
-    setTitle(live.title)
-    setDetails(live.details)
-    setEditTab('source')
-    setMode('edit')
+  const updateTitle = (value: string) => {
+    titleRef.current = value
+    setTitle(value)
   }
 
-  const cancelEdit = () => {
-    setMode('read')
-    setEditTab('source')
+  const updateDetails = (value: string) => {
+    detailsRef.current = value
+    setDetails(value)
   }
 
-  const handleReadToggleTask = (lineIndex: number) => {
-    onToggleTaskLine(lineIndex)
+  const persistDraft = (reason: LineMarkdownCommitReason = 'edit') => {
+    const nextTitle = titleRef.current
+    if (!nextTitle.trim()) {
+      titleRef.current = live.title
+      setTitle(live.title)
+      return
+    }
+    onAutoSaveRef.current(nextTitle, detailsRef.current, reason)
   }
 
-  const handlePreviewToggleTask = (lineIndex: number) => {
-    setDetails((current) => toggleTaskAtLine(current, lineIndex))
-  }
+  useEffect(() => () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
+    if (titleRef.current.trim()) {
+      onAutoSaveRef.current(titleRef.current, detailsRef.current, 'edit')
+    }
+  }, [])
 
   const submitProject = () => {
     const name = newProjectName.trim()
@@ -93,116 +123,176 @@ export default function DetailSheet({
     setNewProjectColor(((project.colorSlot + 1) % theme.ideaPalette.length) as IdeaColorSlot)
   }
 
+  const closeSheet = () => {
+    if (closeStartedRef.current) return
+    closeStartedRef.current = true
+    persistDraft()
+    setClosing(true)
+    const reduceMotion = process.env.TARO_ENV === 'h5' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    closeTimerRef.current = setTimeout(
+      () => onCloseRef.current(),
+      reduceMotion ? 0 : DRAWER_CLOSE_DURATION
+    )
+  }
+
+  const setDrawerOffset = (offset: number) => {
+    dragRef.current.offset = offset
+    sheetRef.current?.style.setProperty('--drawer-y', `${offset}px`)
+  }
+
+  const beginDrawerDrag = (clientY: number, timeStamp: number) => {
+    if (closing || closeStartedRef.current) return
+    dragRef.current = {
+      active: true,
+      startY: clientY,
+      lastY: clientY,
+      lastTime: timeStamp || Date.now(),
+      offset: 0,
+      velocity: 0
+    }
+    sheetRef.current?.classList.add('dragging')
+  }
+
+  const moveDrawerDrag = (clientY: number, timeStamp: number) => {
+    const drag = dragRef.current
+    if (!drag.active) return
+    const nextOffset = Math.max(0, clientY - drag.startY)
+    const nextTime = timeStamp || Date.now()
+    const elapsed = Math.max(1, nextTime - drag.lastTime)
+    drag.velocity = (clientY - drag.lastY) / elapsed
+    drag.lastY = clientY
+    drag.lastTime = nextTime
+    setDrawerOffset(nextOffset)
+  }
+
+  const endDrawerDrag = (cancelled = false) => {
+    const drag = dragRef.current
+    if (!drag.active) return
+    drag.active = false
+    const sheet = sheetRef.current
+    sheet?.classList.remove('dragging')
+    const sheetHeight = sheet?.getBoundingClientRect().height || 400
+    const closeDistance = Math.max(
+      DRAWER_CLOSE_MIN_DISTANCE,
+      sheetHeight * DRAWER_CLOSE_RATIO
+    )
+    const shouldClose = !cancelled && (
+      drag.offset >= closeDistance ||
+      (drag.offset >= DRAWER_FLING_MIN_DISTANCE && drag.velocity >= DRAWER_FLING_VELOCITY)
+    )
+    if (shouldClose) {
+      closeSheet()
+      return
+    }
+    setDrawerOffset(0)
+  }
+
+  useEffect(() => {
+    if (process.env.TARO_ENV !== 'h5') return
+    const handle = dragHandleRef.current
+    if (!handle) return
+
+    const pointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return
+      event.preventDefault()
+      handle.setPointerCapture?.(event.pointerId)
+      beginDrawerDrag(event.clientY, event.timeStamp)
+    }
+    const pointerMove = (event: PointerEvent) => {
+      if (!dragRef.current.active) return
+      event.preventDefault()
+      moveDrawerDrag(event.clientY, event.timeStamp)
+    }
+    const pointerUp = (event: PointerEvent) => {
+      if (!dragRef.current.active) return
+      handle.releasePointerCapture?.(event.pointerId)
+      endDrawerDrag()
+    }
+    const pointerCancel = () => endDrawerDrag(true)
+
+    handle.addEventListener('pointerdown', pointerDown)
+    handle.addEventListener('pointermove', pointerMove)
+    handle.addEventListener('pointerup', pointerUp)
+    handle.addEventListener('pointercancel', pointerCancel)
+    return () => {
+      handle.removeEventListener('pointerdown', pointerDown)
+      handle.removeEventListener('pointermove', pointerMove)
+      handle.removeEventListener('pointerup', pointerUp)
+      handle.removeEventListener('pointercancel', pointerCancel)
+    }
+  })
+
   return (
-    <View className={`detail-sheet ${open ? 'show' : ''}`}>
-      <View className='detail-grabber' />
+    <View
+      ref={sheetRef}
+      className={`detail-sheet ${open ? 'show' : ''} ${closing ? 'closing' : ''}`}
+    >
+      <View
+        ref={dragHandleRef}
+        className='detail-drag-handle'
+        ariaRole='button'
+        ariaLabel='向下拖动关闭任务详情'
+        onTouchStart={(event: any) => {
+          if (process.env.TARO_ENV === 'h5') return
+          const touch = event.touches[0]
+          if (touch) beginDrawerDrag(touch.clientY, event.timeStamp)
+        }}
+        onTouchMove={(event: any) => {
+          if (process.env.TARO_ENV === 'h5') return
+          const touch = event.touches[0]
+          if (!touch) return
+          event.preventDefault()
+          moveDrawerDrag(touch.clientY, event.timeStamp)
+        }}
+        onTouchEnd={() => {
+          if (process.env.TARO_ENV !== 'h5') endDrawerDrag()
+        }}
+        onTouchCancel={() => {
+          if (process.env.TARO_ENV !== 'h5') endDrawerDrag(true)
+        }}
+      >
+        <View className='detail-grabber' />
+      </View>
       <View className='detail-top'>
         <View>
-          <Text className='detail-kicker'>{mode === 'read' ? '任务详情' : '编辑任务'}</Text>
+          <Text className='detail-kicker'>任务详情</Text>
           <Text className='detail-time'>{formatDetailTime(idea.createdAt)}</Text>
         </View>
-        <Button className='close-btn' ariaLabel='关闭详情面板' onClick={onClose}>×</Button>
+        <Button className='close-btn' ariaLabel='关闭详情面板' onClick={closeSheet}>×</Button>
       </View>
 
-      {mode === 'read' ? (
-        <View className='detail-editor detail-editor-read'>
+      <View className='detail-editor detail-editor-live'>
+        <View className='detail-label-row'>
           <Text className='detail-field-label'>标题</Text>
-          <Text className='detail-read-title'>{live.title || '未命名任务'}</Text>
-          <View className='detail-field-divider' />
-          <View className='detail-label-row'>
-            <Text className='detail-field-label'>详情</Text>
-          </View>
-          {live.details ? (
-            <MarkdownView
-              className='detail-markdown'
-              source={live.details}
-              onToggleTask={handleReadToggleTask}
-            />
-          ) : (
-            <Text className='detail-empty-hint'>暂无详情，点编辑补充</Text>
-          )}
-          <View className='detail-read-actions'>
-            <Button className='detail-edit-btn' onClick={enterEdit}>编辑内容</Button>
-          </View>
+          <Text className='detail-optional'>失焦自动保存</Text>
         </View>
-      ) : (
-        <>
-          <View className='detail-edit-tabs' ariaRole='tablist'>
-            <View
-              className={`detail-edit-tab ${editTab === 'source' ? 'active' : ''}`}
-              ariaRole='tab'
-              ariaLabel='源码'
-              onClick={() => setEditTab('source')}
-            >
-              <Text>源码</Text>
-            </View>
-            <View
-              className={`detail-edit-tab ${editTab === 'preview' ? 'active' : ''}`}
-              ariaRole='tab'
-              ariaLabel='预览'
-              onClick={() => setEditTab('preview')}
-            >
-              <Text>预览</Text>
-            </View>
-          </View>
-
-          <View className={`detail-editor ${editTab === 'preview' ? 'detail-editor-preview' : ''}`}>
-            <Text className='detail-field-label'>标题</Text>
-            {editTab === 'source' ? (
-              <Input
-                className='detail-title-input'
-                value={title}
-                maxlength={80}
-                ariaLabel='任务标题'
-                placeholder='输入任务标题'
-                onInput={(event) => setTitle(event.detail.value)}
-              />
-            ) : (
-              <Text className='detail-read-title'>{title.trim() || '未命名任务'}</Text>
-            )}
-            <View className='detail-field-divider' />
-            <View className='detail-label-row'>
-              <Text className='detail-field-label'>详情</Text>
-              {editTab === 'source' ? <Text className='detail-optional'>选填 · Markdown</Text> : null}
-            </View>
-            {editTab === 'source' ? (
-              <Textarea
-                className='detail-body-input'
-                value={details}
-                autoHeight
-                maxlength={-1}
-                ariaLabel='任务详情'
-                placeholder='补充步骤、背景或任何小细节...'
-                onInput={(event) => setDetails(event.detail.value)}
-              />
-            ) : details.trim() ? (
-              <MarkdownView
-                className='detail-markdown'
-                source={details}
-                onToggleTask={handlePreviewToggleTask}
-              />
-            ) : (
-              <Text className='detail-empty-hint'>暂无详情可预览</Text>
-            )}
-          </View>
-
-          <View className='detail-save-row'>
-            <Text className={`detail-save-status ${hasChanges ? 'unsaved' : ''}`}>
-              {hasChanges ? '有未保存的修改' : '内容已同步'}
-            </Text>
-            <View className='detail-save-actions'>
-              <Button className='detail-cancel-btn' onClick={cancelEdit}>取消</Button>
-              <Button
-                className='detail-save-btn'
-                disabled={!hasTitle || !hasChanges ? true : undefined}
-                onClick={() => onSave(title, details)}
-              >
-                保存修改
-              </Button>
-            </View>
-          </View>
-        </>
-      )}
+        <Input
+          className='detail-title-input'
+          value={title}
+          maxlength={80}
+          confirmType='done'
+          ariaLabel='任务标题'
+          placeholder='输入任务标题'
+          onInput={(event) => updateTitle(event.detail.value)}
+          onBlur={() => persistDraft()}
+          onConfirm={() => persistDraft()}
+        />
+        <View className='detail-field-divider' />
+        <View className='detail-label-row'>
+          <Text className='detail-field-label'>详情</Text>
+          <Text className='detail-optional'>连续编辑 · Markdown · 自动保存</Text>
+        </View>
+        <LineMarkdownEditor
+          className='detail-line-editor'
+          value={details}
+          onChange={updateDetails}
+          onCommit={(value, reason) => {
+            updateDetails(value)
+            persistDraft(reason)
+          }}
+        />
+      </View>
 
       <Text className='priority-picker-title'>任务分组</Text>
       <View className='priority-picker'>

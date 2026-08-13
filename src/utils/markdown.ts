@@ -8,6 +8,7 @@ export type InlineNode =
 export type ListItem = {
   task?: boolean
   checked?: boolean
+  marker?: string
   lineIndex: number
   children: InlineNode[]
 }
@@ -138,7 +139,7 @@ type LineKind =
   | { kind: 'blank' }
   | { kind: 'heading'; level: 1 | 2 | 3; text: string }
   | { kind: 'blockquote'; text: string }
-  | { kind: 'list'; ordered: boolean; task?: boolean; checked?: boolean; text: string }
+  | { kind: 'list'; ordered: boolean; task?: boolean; checked?: boolean; marker?: string; text: string }
   | { kind: 'paragraph'; text: string }
 
 function classifyLine(line: string): LineKind {
@@ -175,7 +176,7 @@ function classifyLine(line: string): LineKind {
 
   const ordered = ORDERED_RE.exec(line)
   if (ordered) {
-    return { kind: 'list', ordered: true, text: ordered[2] }
+    return { kind: 'list', ordered: true, marker: `${ordered[1]}.`, text: ordered[2] }
   }
 
   return { kind: 'paragraph', text: line }
@@ -237,6 +238,7 @@ export function parseMarkdown(source: string): BlockNode[] {
         if (next.kind !== 'list' || next.ordered !== ordered) break
 
         const item: ListItem = {
+          marker: next.marker,
           lineIndex: i,
           children: parseInline(next.text)
         }

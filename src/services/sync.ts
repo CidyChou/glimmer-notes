@@ -136,12 +136,11 @@ function stripDemoDefaults(state: ReturnType<typeof loadIdeaState>) {
   )
   const ideas = state.ideas.filter((idea) => !demoIds.has(idea.id))
   const tombstones = state.tombstones.filter((item) => !demoIds.has(item.id) && !isDemoSeedId(item.id))
-  const usedProjectIds = new Set(ideas.map((idea) => idea.projectId))
-  const usedTagIds = new Set(ideas.flatMap((idea) => idea.tagIds))
   return {
     ideas,
-    projects: state.projects.filter((project) => project.isDefault || usedProjectIds.has(project.id)),
-    tags: state.tags.filter((tag) => usedTagIds.has(tag.id)),
+    // Projects and tags are user-authored data even before a task references them.
+    projects: state.projects,
+    tags: state.tags,
     tombstones
   }
 }
@@ -227,7 +226,7 @@ async function performSync(initial: boolean) {
   // into a cloud account that already has real data — that was the main source of duplicates.
   const localIsEphemeralDemo = (
     (!local.hasPersistedIdeas || isDemoOnlyIdeaSet(local.ideas))
-    && local.tombstones.length === 0
+    && !localHasRealContent(local)
   )
 
   if (initial && localIsEphemeralDemo) {
@@ -255,11 +254,12 @@ async function performSync(initial: boolean) {
     }
     applyServerState(remote, true)
   } else {
+    const upload = isDemoOnlyIdeaSet(local.ideas) ? stripDemoDefaults(local) : local
     remote = await request<SyncResponse>('/api/sync', 'POST', {
-      ideas: local.ideas,
-      projects: local.projects,
-      tags: local.tags,
-      tombstones: local.tombstones
+      ideas: upload.ideas,
+      projects: upload.projects,
+      tags: upload.tags,
+      tombstones: upload.tombstones
     })
     applyServerState(remote)
   }

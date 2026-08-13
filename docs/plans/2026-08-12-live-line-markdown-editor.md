@@ -1,5 +1,9 @@
 # Live Line Markdown Editor Implementation Plan
 
+**状态：** 已完成（2026-08-13）
+
+实现以交互目标为准，并额外处理了快速勾选竞态、列表前缀尾空格持久化、显式有序列表编号，以及 Taro H5 同行退出列表时的原生输入节点复用问题。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 详情区改为按行混合编辑：未聚焦行渲染 Markdown，聚焦行编辑源码；列表回车自动续前缀；失焦/换行/勾选自动保存。

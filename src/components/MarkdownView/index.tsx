@@ -13,6 +13,7 @@ import './index.css'
 interface Props {
   source: string
   onToggleTask?: (lineIndex: number) => void
+  taskToggleMode?: 'row' | 'checkbox'
   className?: string
 }
 
@@ -82,31 +83,42 @@ function ListItemRow({
   item,
   ordered,
   index,
-  onToggleTask
+  onToggleTask,
+  taskToggleMode
 }: {
   item: ListItem
   ordered: boolean
   index: number
   onToggleTask?: (lineIndex: number) => void
+  taskToggleMode: 'row' | 'checkbox'
 }) {
   const isTask = !!item.task
   const checked = !!item.checked
 
   const canToggle = isTask && !!onToggleTask
+  const canToggleRow = canToggle && taskToggleMode === 'row'
 
   return (
     <View
-      className={`md-li ${isTask ? 'md-task' : ''} ${isTask && checked ? 'md-task-done' : ''} ${canToggle ? 'md-task-interactive' : ''}`}
-      ariaRole={canToggle ? 'button' : undefined}
-      ariaLabel={canToggle ? (checked ? '取消完成' : '标记完成') : undefined}
-      onClick={canToggle ? () => onToggleTask?.(item.lineIndex) : undefined}
+      className={`md-li ${isTask ? 'md-task' : ''} ${isTask && checked ? 'md-task-done' : ''} ${canToggleRow ? 'md-task-interactive' : ''}`}
+      ariaRole={canToggleRow ? 'button' : undefined}
+      ariaLabel={canToggleRow ? (checked ? '取消完成' : '标记完成') : undefined}
+      onClick={canToggleRow ? () => onToggleTask?.(item.lineIndex) : undefined}
     >
       {isTask ? (
-        <View className={`md-checkbox ${checked ? 'checked' : ''} ${canToggle ? 'interactive' : ''}`}>
+        <View
+          className={`md-checkbox ${checked ? 'checked' : ''} ${canToggle ? 'interactive' : ''}`}
+          ariaRole={canToggle && taskToggleMode === 'checkbox' ? 'button' : undefined}
+          ariaLabel={canToggle && taskToggleMode === 'checkbox' ? (checked ? '取消完成' : '标记完成') : undefined}
+          onClick={canToggle && taskToggleMode === 'checkbox' ? (event) => {
+            event.stopPropagation()
+            onToggleTask?.(item.lineIndex)
+          } : undefined}
+        >
           {checked ? <Text className='md-checkbox-mark'>✓</Text> : null}
         </View>
       ) : ordered ? (
-        <Text className='md-marker'>{index + 1}.</Text>
+        <Text className='md-marker'>{item.marker || `${index + 1}.`}</Text>
       ) : (
         <Text className='md-marker'>•</Text>
       )}
@@ -117,7 +129,12 @@ function ListItemRow({
   )
 }
 
-function renderBlock(block: BlockNode, index: number, onToggleTask?: (lineIndex: number) => void) {
+function renderBlock(
+  block: BlockNode,
+  index: number,
+  onToggleTask: ((lineIndex: number) => void) | undefined,
+  taskToggleMode: 'row' | 'checkbox'
+) {
   const key = `b-${index}`
 
   switch (block.type) {
@@ -151,6 +168,7 @@ function renderBlock(block: BlockNode, index: number, onToggleTask?: (lineIndex:
               ordered={block.ordered}
               index={i}
               onToggleTask={onToggleTask}
+              taskToggleMode={taskToggleMode}
             />
           ))}
         </View>
@@ -160,13 +178,13 @@ function renderBlock(block: BlockNode, index: number, onToggleTask?: (lineIndex:
   }
 }
 
-export default function MarkdownView({ source, onToggleTask, className }: Props) {
+export default function MarkdownView({ source, onToggleTask, taskToggleMode = 'row', className }: Props) {
   const blocks = parseMarkdown(source)
   if (blocks.length === 0) return null
 
   return (
     <View className={`md-view ${className || ''}`.trim()}>
-      {blocks.map((block, index) => renderBlock(block, index, onToggleTask))}
+      {blocks.map((block, index) => renderBlock(block, index, onToggleTask, taskToggleMode))}
     </View>
   )
 }

@@ -1,7 +1,10 @@
-import { Button, Input, ScrollView, Text, Textarea, View } from '@tarojs/components'
+import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import LineMarkdownEditor from '@/components/LineMarkdownEditor'
 import type { IdeaProject, IdeaTag } from '@/types/idea'
 import { useTheme } from '@/theme'
+import type { IdeaColorSlot } from '@/theme'
 import './index.css'
 
 interface Props {
@@ -15,13 +18,47 @@ interface Props {
   onTitleChange: (value: string) => void
   onDetailsChange: (value: string) => void
   onProjectChange: (projectId: string) => void
+  onCreateProject: (name: string, colorSlot: IdeaColorSlot) => IdeaProject | null
   onTagToggle: (tagId: string) => void
   onSave: () => void
 }
 
-export default function ComposerSheet({ open, title, details, projects, tags, selectedProjectId, selectedTagIds, onTitleChange, onDetailsChange, onProjectChange, onTagToggle, onSave }: Props) {
+export default function ComposerSheet({ open, title, details, projects, tags, selectedProjectId, selectedTagIds, onTitleChange, onDetailsChange, onProjectChange, onCreateProject, onTagToggle, onSave }: Props) {
   const { theme } = useTheme()
+  const [projectCreateOpen, setProjectCreateOpen] = useState(false)
+  const [newProjectName, setNewProjectName] = useState('')
+  const titleInputRef = useRef<HTMLElement | null>(null)
+  const projectInputRef = useRef<HTMLElement | null>(null)
   const hasTitle = !!title.trim()
+
+  useEffect(() => {
+    if (open) return
+    setProjectCreateOpen(false)
+    setNewProjectName('')
+  }, [open])
+
+  const submitProject = () => {
+    const name = newProjectName.trim()
+    if (!name) return
+    const colorSlot = (projects.length % theme.ideaPalette.length) as IdeaColorSlot
+    const project = onCreateProject(name, colorSlot)
+    if (!project) return
+    onProjectChange(project.id)
+    titleInputRef.current?.querySelector('input')?.focus()
+    setNewProjectName('')
+    setProjectCreateOpen(false)
+  }
+
+  const toggleProjectCreate = () => {
+    if (projectCreateOpen) {
+      titleInputRef.current?.querySelector('input')?.focus()
+      setNewProjectName('')
+      setProjectCreateOpen(false)
+      return
+    }
+    setProjectCreateOpen(true)
+    projectInputRef.current?.querySelector('input')?.focus()
+  }
 
   return (
     <View className={`sheet composer-sheet ${open ? 'show' : ''}`}>
@@ -43,9 +80,10 @@ export default function ComposerSheet({ open, title, details, projects, tags, se
           <Text className='input-label'>标题</Text>
           <Input
             key={open ? 'composer-title-open' : 'composer-title-closed'}
+            ref={titleInputRef}
             className='title-input'
             value={title}
-            focus={open}
+            focus={open && !projectCreateOpen}
             maxlength={80}
             confirmType='next'
             ariaLabel='任务标题'
@@ -61,14 +99,11 @@ export default function ComposerSheet({ open, title, details, projects, tags, se
             <Text className='input-label'>详情</Text>
             <Text className='optional-label'>选填</Text>
           </View>
-          <Textarea
-            className='detail-input'
+          <LineMarkdownEditor
+            className='composer-details-editor'
             value={details}
-            autoHeight
-            maxlength={-1}
-            ariaLabel='任务详情'
-            placeholder='补充步骤、背景或任何小细节...'
-            onInput={(event) => onDetailsChange(event.detail.value)}
+            onChange={onDetailsChange}
+            onCommit={() => {}}
           />
         </View>
         <View className='input-meta'>
@@ -98,8 +133,46 @@ export default function ComposerSheet({ open, title, details, projects, tags, se
                   <Text>{project.name}</Text>
                 </View>
               ))}
+              <View
+                className={`composer-project-add ${projectCreateOpen ? 'active' : ''}`}
+                ariaRole='button'
+                ariaLabel='新增项目'
+                onClick={toggleProjectCreate}
+              >
+                <Text>+</Text>
+              </View>
             </View>
           </ScrollView>
+          <View className={`composer-project-create ${projectCreateOpen ? 'show' : ''}`}>
+            <Input
+              ref={projectInputRef}
+              className='composer-project-name-input'
+              value={newProjectName}
+              focus={projectCreateOpen}
+              maxlength={16}
+              ariaLabel='新项目名称'
+              placeholder='输入项目名称'
+              confirmType='done'
+              nativeProps={{ tabIndex: projectCreateOpen ? 0 : -1 }}
+              onInput={(event) => setNewProjectName(event.detail.value)}
+              onConfirm={submitProject}
+            />
+            <Button
+              className='composer-project-save'
+              disabled={projectCreateOpen && newProjectName.trim() ? undefined : true}
+              onClick={submitProject}
+            >添加</Button>
+            <View
+              className='composer-project-cancel'
+              ariaRole='button'
+              ariaLabel='取消新增项目'
+              onClick={() => {
+                titleInputRef.current?.querySelector('input')?.focus()
+                setNewProjectName('')
+                setProjectCreateOpen(false)
+              }}
+            >取消</View>
+          </View>
         </View>
 
         <View className='composer-taxonomy-group'>

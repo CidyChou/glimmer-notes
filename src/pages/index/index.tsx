@@ -20,8 +20,7 @@ import { getSyncStatus, scheduleSync, subscribeSyncData, subscribeSyncStatus } f
 import { createId } from '@/utils/id'
 import { copyText } from '@/utils/clipboard'
 import { isToday } from '@/utils/date'
-import { composeIdeaText, splitIdeaText } from '@/utils/ideaText'
-import { toggleTaskAtLine } from '@/utils/markdown'
+import { composeIdeaText } from '@/utils/ideaText'
 import { DEFAULT_PROJECT_ID } from '@/types/idea'
 import type { Idea, IdeaDropTarget, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
 import { findIdeaProject, findIdeaTags, findProjectById, toggleTagId } from '@/utils/tags'
@@ -274,32 +273,21 @@ export default function IndexPage() {
     return project
   }
 
-  const saveSelected = (title: string, details: string) => {
+  const autoSaveSelected = (title: string, details: string, reason: 'edit' | 'task') => {
     if (!selectedId || !title.trim()) return
-    const current = ideas.find((idea) => idea.id === selectedId)
-    if (!current) return
-    const text = composeIdeaText(title, details)
-    const updatedAt = Date.now()
-    const after = { ...current, text, updatedAt }
-    commitIdeas(ideas.map((idea) => idea.id === selectedId ? after : idea))
-    recordIdeaChange({ ideaId: selectedId, before: current, after, label: '编辑任务' })
-    setSelectedId(null)
-    flash('修改已保存')
-  }
-
-  /** Toggle a task checkbox using latest ideas (ref) so rapid taps do not race. */
-  const toggleSelectedTaskLine = (lineIndex: number) => {
-    if (!selectedId) return
     const current = ideasRef.current.find((idea) => idea.id === selectedId)
     if (!current) return
-    const { title, details } = splitIdeaText(current.text)
-    const nextDetails = toggleTaskAtLine(details, lineIndex)
-    const text = composeIdeaText(title, nextDetails)
+    const text = composeIdeaText(title, details)
     if (text === current.text) return
     const updatedAt = Date.now()
     const after = { ...current, text, updatedAt }
     commitIdeas(ideasRef.current.map((idea) => idea.id === selectedId ? after : idea))
-    recordIdeaChange({ ideaId: selectedId, before: current, after, label: '更新清单' })
+    recordIdeaChange({
+      ideaId: selectedId,
+      before: current,
+      after,
+      label: reason === 'task' ? '更新清单' : '编辑详情'
+    })
   }
 
   const togglePin = () => {
@@ -466,6 +454,7 @@ export default function IndexPage() {
             onTitleChange={setDraftTitle}
             onDetailsChange={setDraftDetails}
             onProjectChange={setDraftProjectId}
+            onCreateProject={createProject}
             onTagToggle={(tagId) => setDraftTagIds((ids) => toggleTagId(ids, tagId))}
           onSave={saveDraft}
         />
@@ -483,8 +472,7 @@ export default function IndexPage() {
             onTagToggle={(tagId) => selectedId && toggleIdeaTag(selectedId, tagId)}
             onCopy={() => void copyIdea(selectedIdea)}
             onArchive={() => archiveIdea(selectedIdea.id)}
-            onSave={saveSelected}
-            onToggleTaskLine={toggleSelectedTaskLine}
+            onAutoSave={autoSaveSelected}
             onTogglePin={togglePin}
             onDelete={deleteSelected}
           />
