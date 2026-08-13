@@ -70,6 +70,7 @@ export default function DetailSheet({
   const [projectCreateOpen, setProjectCreateOpen] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectColor, setNewProjectColor] = useState<IdeaColorSlot>(2)
+  const [entered, setEntered] = useState(false)
   const [closing, setClosing] = useState(false)
   const sheetRef = useRef<HTMLElement | null>(null)
   const dragHandleRef = useRef<HTMLElement | null>(null)
@@ -85,6 +86,25 @@ export default function DetailSheet({
     velocity: 0
   })
   onCloseRef.current = onClose
+
+  useEffect(() => {
+    if (!open) {
+      setEntered(false)
+      return
+    }
+    if (process.env.TARO_ENV === 'h5') {
+      let secondFrame = 0
+      const firstFrame = requestAnimationFrame(() => {
+        secondFrame = requestAnimationFrame(() => setEntered(true))
+      })
+      return () => {
+        cancelAnimationFrame(firstFrame)
+        if (secondFrame) cancelAnimationFrame(secondFrame)
+      }
+    }
+    const timer = setTimeout(() => setEntered(true), 16)
+    return () => clearTimeout(timer)
+  }, [open])
 
   const updateTitle = (value: string) => {
     titleRef.current = value
@@ -196,7 +216,6 @@ export default function DetailSheet({
     const pointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return
       event.preventDefault()
-      handle.setPointerCapture?.(event.pointerId)
       beginDrawerDrag(event.clientY, event.timeStamp)
     }
     const pointerMove = (event: PointerEvent) => {
@@ -206,27 +225,28 @@ export default function DetailSheet({
     }
     const pointerUp = (event: PointerEvent) => {
       if (!dragRef.current.active) return
-      handle.releasePointerCapture?.(event.pointerId)
       endDrawerDrag()
     }
     const pointerCancel = () => endDrawerDrag(true)
 
     handle.addEventListener('pointerdown', pointerDown)
-    handle.addEventListener('pointermove', pointerMove)
-    handle.addEventListener('pointerup', pointerUp)
-    handle.addEventListener('pointercancel', pointerCancel)
+    window.addEventListener('pointermove', pointerMove, { passive: false })
+    window.addEventListener('pointerup', pointerUp)
+    window.addEventListener('pointercancel', pointerCancel)
+    window.addEventListener('blur', pointerCancel)
     return () => {
       handle.removeEventListener('pointerdown', pointerDown)
-      handle.removeEventListener('pointermove', pointerMove)
-      handle.removeEventListener('pointerup', pointerUp)
-      handle.removeEventListener('pointercancel', pointerCancel)
+      window.removeEventListener('pointermove', pointerMove)
+      window.removeEventListener('pointerup', pointerUp)
+      window.removeEventListener('pointercancel', pointerCancel)
+      window.removeEventListener('blur', pointerCancel)
     }
-  })
+  }, [])
 
   return (
     <View
       ref={sheetRef}
-      className={`detail-sheet ${open ? 'show' : ''} ${closing ? 'closing' : ''}`}
+      className={`detail-sheet ${open && entered ? 'show' : ''} ${closing ? 'closing' : ''}`}
     >
       <View
         ref={dragHandleRef}
