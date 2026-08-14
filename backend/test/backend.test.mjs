@@ -141,12 +141,11 @@ test('JSON store persists merged state across restarts', async () => {
   }
 })
 
-test('HTTP API authenticates, enforces CORS, validates and syncs', async () => {
+test('HTTP API authenticates, allows all origins, validates and syncs', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'glimmer-api-'))
   const passwordSalt = 'test-salt'
   const server = await createApiServer({
     dataFile: path.join(directory, 'store.json'),
-    allowedOrigins: 'http://client.example',
     passwordSalt,
     passwordHash: hashPassword('correct horse', passwordSalt),
     sessionSecret: 'test-session-secret',
@@ -168,12 +167,23 @@ test('HTTP API authenticates, enforces CORS, validates and syncs', async () => {
 
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: 'http://client.example' },
+      headers: { 'Content-Type': 'application/json', Origin: 'http://unlisted-client.example' },
       body: JSON.stringify({ password: 'correct horse' })
     })
     assert.equal(login.status, 200)
-    assert.equal(login.headers.get('access-control-allow-origin'), 'http://client.example')
+    assert.equal(login.headers.get('access-control-allow-origin'), '*')
     const { token } = await login.json()
+
+    const preflight = await fetch(`${baseUrl}/api/sync`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://another-unlisted-client.example',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'authorization,content-type'
+      }
+    })
+    assert.equal(preflight.status, 204)
+    assert.equal(preflight.headers.get('access-control-allow-origin'), '*')
 
     const invalid = await fetch(`${baseUrl}/api/sync`, {
       method: 'POST',

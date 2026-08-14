@@ -9,9 +9,11 @@ export default defineConfig<'webpack5'>(async (merge, { command }) => {
     date: '2026-08-10',
     designWidth: 375,
     deviceRatio: {
-      375: 1,
+      // CSS is authored against a 375px phone canvas. Convert 1px to 2rpx
+      // so the mini program keeps the same physical size as the H5 build.
+      375: 2,
       640: 2.34 / 2,
-      750: 2,
+      750: 1,
       828: 1.81 / 2
     },
     sourceRoot: 'src',
@@ -51,6 +53,14 @@ export default defineConfig<'webpack5'>(async (merge, { command }) => {
       publicPath: '/',
       staticDirectory: 'static',
       postcss: {
+        pxtransform: {
+          enable: true,
+          config: {
+            // Keep the phone canvas fluid, but stop wide desktop screens from
+            // scaling every control up to twice its authored size.
+            maxRootSize: 22
+          }
+        },
         autoprefixer: {
           enable: true,
           config: {}

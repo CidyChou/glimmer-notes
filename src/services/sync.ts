@@ -12,6 +12,17 @@ const SYNC_INITIALIZED_STORAGE_KEY = 'idea-space-sync-initialized-v1'
 const API_BASE_URL = __API_BASE_URL__.replace(/\/$/, '')
 const SYNC_DELAY_MS = 350
 
+function connectionErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || '')
+  if (process.env.TARO_ENV !== 'h5' && API_BASE_URL.startsWith('http://')) {
+    return '微信小程序无法访问 HTTP 接口，请配置 HTTPS 合法域名后重试'
+  }
+  if (/url not in domain list|request:fail|ssl|certificate|domain/i.test(message)) {
+    return '接口域名未通过微信校验，请检查 request 合法域名与 HTTPS 证书'
+  }
+  return '暂时无法连接云端，请检查网络后重试'
+}
+
 export type SyncPhase = 'signed-out' | 'conflict' | 'syncing' | 'synced' | 'offline' | 'error'
 
 export type InitialSyncChoice = 'replace-local' | 'merge'
@@ -414,7 +425,7 @@ export async function loginAndSync(password: string): Promise<'synced' | 'confli
     if (!token) updateStatus({ phase: 'signed-out', authenticated: false, detail: '登录后可在设备间同步' })
     if (error instanceof ApiError && error.statusCode === 401) throw new Error('访问口令不正确')
     if (error instanceof ApiError && error.statusCode === 429) throw new Error('尝试次数过多，请稍后再试')
-    throw new Error('暂时无法连接云端，请检查网络后重试')
+    throw new Error(connectionErrorMessage(error))
   }
 }
 

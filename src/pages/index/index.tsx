@@ -330,7 +330,7 @@ export default function IndexPage() {
   const hasSheetOpen = composerOpen || !!selectedId
 
   return (
-    <View className='stage theme-root' style={themeStyle}>
+    <View className={`stage theme-root ${process.env.TARO_ENV === 'h5' ? 'platform-h5' : 'platform-mini'}`} style={themeStyle}>
       <View className={`phone-shell mode-${mode}`}>
         <View className='ambient ambient-a' />
         <View className='ambient ambient-b' />
@@ -338,7 +338,7 @@ export default function IndexPage() {
         <View className='topbar'>
           <View className='brand'>
             <Text className='eyebrow'>IDEA INBOX</Text>
-            <Text className='title'>拾光笔记</Text>
+            <Text className='title'>光屿札记</Text>
           </View>
           <View className='topbar-actions'>
             <View className='history-controls' ariaLabel='任务历史'>

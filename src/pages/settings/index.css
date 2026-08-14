@@ -1,4 +1,5 @@
 .settings-stage {
+  --page-header-top: calc(16px + env(safe-area-inset-top, 0px));
   width: 100vw;
   height: 100dvh;
   min-height: 640px;
@@ -48,8 +49,8 @@
   top: 0;
   left: 0;
   right: 0;
-  min-height: calc(76px + env(safe-area-inset-top));
-  padding: calc(16px + env(safe-area-inset-top)) 16px 10px;
+  min-height: calc(var(--page-header-top, 16px) + 60px);
+  padding: var(--page-header-top, 16px) 16px 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -90,7 +91,7 @@
 .settings-scroll {
   position: absolute;
   z-index: 2;
-  inset: calc(82px + env(safe-area-inset-top)) 0 0;
+  inset: calc(var(--page-header-top, 16px) + 66px) 0 0;
   overflow-y: auto;
   scrollbar-width: none;
   padding: 14px 16px calc(30px + env(safe-area-inset-bottom));
@@ -838,6 +839,35 @@
   .settings-scroll { padding-left: 28px; padding-right: 28px; }
   .theme-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .theme-card.wide { grid-column: auto; }
+}
+
+@media (min-width: 1024px) {
+  .settings-stage.platform-h5 {
+    display: block;
+    min-height: 100dvh;
+    background: var(--page-bg);
+  }
+
+  .settings-stage.platform-h5 .settings-shell {
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .settings-stage.platform-h5 .settings-topbar {
+    padding-left: 36px;
+    padding-right: 36px;
+  }
+
+  .settings-stage.platform-h5 .settings-scroll {
+    padding-left: max(36px, calc((100vw - 1080px) / 2));
+    padding-right: max(36px, calc((100vw - 1080px) / 2));
+  }
 }
 
 @media (max-width: 350px) {

@@ -48,25 +48,15 @@ export async function createApiServer(config) {
   const store = config.store || new JsonSyncStore(config.dataFile)
   await store.init()
   const failures = new Map()
-  const allowedOrigins = new Set(
-    String(config.allowedOrigins || '')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-  )
 
   return http.createServer(async (request, response) => {
-    const origin = request.headers.origin
-    const corsHeaders = {}
-    if (origin && allowedOrigins.has(origin)) {
-      corsHeaders['Access-Control-Allow-Origin'] = origin
-      corsHeaders.Vary = 'Origin'
-      corsHeaders['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
-      corsHeaders['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
     }
 
     if (request.method === 'OPTIONS') {
-      if (origin && !allowedOrigins.has(origin)) return json(response, 403, { error: 'origin_not_allowed' })
       response.writeHead(204, corsHeaders)
       return response.end()
     }
@@ -146,7 +136,6 @@ export async function startApiFromEnvironment() {
   const host = process.env.HOST || '0.0.0.0'
   const server = await createApiServer({
     dataFile: process.env.DATA_FILE || './data/store.json',
-    allowedOrigins: required('ALLOWED_ORIGINS'),
     passwordSalt: required('AUTH_PASSWORD_SALT'),
     passwordHash: required('AUTH_PASSWORD_HASH'),
     sessionSecret: required('AUTH_SESSION_SECRET'),

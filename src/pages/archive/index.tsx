@@ -56,7 +56,7 @@ export default function ArchivePage() {
   }
 
   return (
-    <View className='archive-stage theme-root' style={themeStyle}>
+    <View className={`archive-stage theme-root ${process.env.TARO_ENV === 'h5' ? 'platform-h5' : 'platform-mini'}`} style={themeStyle}>
       <View className='archive-shell'>
         <View className='archive-ambient archive-ambient-a' />
         <View className='archive-ambient archive-ambient-b' />

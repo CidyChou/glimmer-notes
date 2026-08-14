@@ -599,6 +599,8 @@
 .drag-ghost {
   position: fixed;
   z-index: 70;
+  left: 0;
+  top: 0;
   width: 28px;
   height: 28px;
   margin: 0;
@@ -610,11 +612,44 @@
   align-items: center;
   justify-content: center;
   overflow: visible;
-  transform: translate3d(-50%, -50%, 0);
   pointer-events: none;
-  will-change: transform, left, top;
-  /* left/top driven by JS — no transition on position for zero lag */
+  will-change: transform;
   transition: none;
+}
+
+.drag-trail {
+  position: fixed;
+  z-index: 69;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  will-change: transform;
+  transition-property: transform;
+  transition-duration: var(--trail-duration);
+  transition-timing-function: cubic-bezier(.12, .72, .18, 1);
+}
+
+.drag-trail-spark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  opacity: var(--trail-opacity);
+  transform: scale(var(--trail-scale));
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in srgb, var(--ghost-color) 55%, #fff) 0 15%,
+    var(--ghost-color) 45%,
+    transparent 74%
+  );
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--ghost-color) 48%, transparent),
+    0 0 17px color-mix(in srgb, var(--ghost-color) 22%, transparent);
+  animation: ghost-trail-flicker .52s ease-in-out var(--trail-flicker-delay) infinite alternate;
 }
 
 .drag-ghost-aura {
@@ -648,6 +683,40 @@
     0 4px 14px rgba(var(--shadow-rgb), .28);
 }
 
+.drag-ghost-ring {
+  position: absolute;
+  z-index: 2;
+  inset: 3px;
+  border: 1px solid color-mix(in srgb, var(--ghost-color) 68%, transparent);
+  border-right-color: transparent;
+  border-bottom-color: color-mix(in srgb, var(--ghost-color) 16%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 7px color-mix(in srgb, var(--ghost-color) 28%, transparent);
+  animation: ghost-ring-spin .8s linear infinite;
+}
+
+.drag-ghost-orbit {
+  position: absolute;
+  z-index: 3;
+  inset: -3px;
+  border-radius: 50%;
+  animation: ghost-orbit 1.15s linear infinite;
+}
+
+.drag-orbit-particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ghost-color) 78%, #fff);
+  box-shadow:
+    0 0 5px var(--ghost-color),
+    0 0 10px color-mix(in srgb, var(--ghost-color) 45%, transparent);
+}
+
+.drag-orbit-particle.particle-a { left: 1px; top: 7px; }
+.drag-orbit-particle.particle-b { right: 2px; bottom: 5px; opacity: .7; transform: scale(.7); }
+
 /* Lift: card energy condenses into a bright point */
 .drag-ghost.lifting .drag-ghost-core {
   animation: ghost-condense .14s cubic-bezier(.16, 1, .3, 1) both;
@@ -659,7 +728,7 @@
 
 /* Steady flight: soft breathing glow */
 .drag-ghost.flying .drag-ghost-aura {
-  animation: ghost-breathe 1.05s ease-in-out infinite alternate;
+  animation: ghost-breathe .72s ease-in-out infinite alternate;
 }
 
 /* Near a drop target — magnetic pull feel */
@@ -678,6 +747,9 @@
   transform: scale(1.28);
   transition: transform .14s cubic-bezier(.16, 1, .3, 1), opacity .12s ease;
 }
+
+.drag-ghost.magnet .drag-ghost-orbit,
+.drag-ghost.magnet .drag-ghost-ring { animation-duration: .38s; }
 
 .empty-state {
   height: 58%;
@@ -766,6 +838,19 @@
   }
 }
 
+@keyframes ghost-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ghost-orbit {
+  to { transform: rotate(-360deg); }
+}
+
+@keyframes ghost-trail-flicker {
+  from { opacity: .08; }
+  to { opacity: var(--trail-opacity); }
+}
+
 @media (max-width: 360px) {
   .organize-head { padding-left: 14px; padding-right: 14px; }
   .filter-control { padding-left: 7px; padding-right: 7px; }
@@ -789,8 +874,14 @@
   .sort-overlay,
   .sort-targets,
   .organize-drop-target,
+  .drag-trail,
+  .drag-trail-spark,
+  .drag-ghost-ring,
+  .drag-ghost-orbit,
   .drag-ghost-core,
   .drag-ghost-aura { transition-duration: .01ms; animation: none !important; }
+
+  .drag-trail { display: none; }
 
   .organize-shell.sorting .idea-row.sort-source .idea-row-main {
     transition-duration: .01ms;

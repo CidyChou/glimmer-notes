@@ -7,16 +7,24 @@ BACKEND_PORT ?= 8769
 CLIENT_PORT ?= 8770
 API_BASE_URL ?= http://$(PUBLIC_HOST):$(BACKEND_PORT)
 DEV_LAN_HOST ?= 192.168.112.146
-DEV_ORIGINS ?= http://localhost:10086,http://127.0.0.1:10086,http://localhost:10087,http://127.0.0.1:10087,http://localhost:10088,http://127.0.0.1:10088,http://$(DEV_LAN_HOST):10086,http://$(DEV_LAN_HOST):10087,http://$(DEV_LAN_HOST):10088
-ALLOWED_ORIGINS ?= http://$(PUBLIC_HOST):$(CLIENT_PORT),$(DEV_ORIGINS)
 SSH_OPTS ?= -o BatchMode=yes -o ConnectTimeout=10
 SSH_BIN ?= /usr/bin/ssh
 RSYNC_RSH ?= /usr/bin/ssh $(SSH_OPTS)
 
-.PHONY: dev up_client up_backend up_106 build_client test_backend
+.PHONY: dev wechat up_client up_backend up_106 build_client test_backend
 
 dev:
 	npm run dev:h5
+
+wechat:
+	npm run typecheck
+	TARO_APP_API_BASE_URL="$(API_BASE_URL)" npm run build:weapp
+	rm -rf dist-wechat
+	mkdir -p dist-wechat
+	cp -R dist/. dist-wechat/
+	node -e 'const fs = require("fs"); const config = JSON.parse(fs.readFileSync("project.config.json", "utf8")); config.miniprogramRoot = "./"; fs.writeFileSync("dist-wechat/project.config.json", JSON.stringify(config, null, 2) + "\n");'
+	@echo "WeChat project exported: $(CURDIR)/dist-wechat"
+	@echo "Import this folder directly in WeChat DevTools."
 
 build_client:
 	npm ci
@@ -53,7 +61,6 @@ up_backend: test_backend
 		HOST="0.0.0.0" \
 		PORT="$(BACKEND_PORT)" \
 		DATA_FILE="$(REMOTE_ROOT)/data/store.json" \
-		ALLOWED_ORIGINS="$(ALLOWED_ORIGINS)" \
 		SESSION_TTL_SECONDS="2592000" \
 		node "$(REMOTE_ROOT)/backend/scripts/init-auth.mjs" "$(REMOTE_ROOT)/config/backend.env"; \
 		set -a; . "$(REMOTE_ROOT)/config/backend.env"; set +a; \

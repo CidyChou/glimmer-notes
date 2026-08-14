@@ -80,6 +80,12 @@ const ACTIVATE_DISTANCE = 5
 const ROW_SCROLL_RATIO = 1.35
 /** Lift the light-dot above the fingertip so the finger doesn't cover it. Hit-testing still uses the raw touch point. */
 const GHOST_Y_OFFSET = 40
+const GHOST_SIZE = 28
+const GHOST_TRAIL_LAYERS = 5
+
+function ghostTransform(x: number, y: number) {
+  return `translate3d(${x - GHOST_SIZE / 2}px, ${y - GHOST_Y_OFFSET - GHOST_SIZE / 2}px, 0)`
+}
 
 function bucketIdeas(ideas: Idea[], priority: PriorityKey) {
   return ideas
@@ -290,6 +296,7 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
   const ignoreHandleClickRef = useRef(false)
   const ideasRef = useRef(ideas)
   const ghostRef = useRef<any>(null)
+  const ghostTrailRefs = useRef<any[]>([])
   const lastHoverRef = useRef<IdeaDropTarget | null>(null)
   const rafRef = useRef<number | null>(null)
   const pendingPointRef = useRef<{ x: number; y: number } | null>(null)
@@ -353,8 +360,7 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
     if (sortUi.active) setFilterMenu(null)
   }, [sortUi.active])
 
-  const resolveGhostEl = (): HTMLElement | null => {
-    const node = ghostRef.current
+  const resolveGhostEl = (node: any): HTMLElement | null => {
     if (!node) return null
     if (typeof (node as HTMLElement).style !== 'undefined') return node as HTMLElement
     const nested = (node as { $el?: HTMLElement }).$el
@@ -362,11 +368,15 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
   }
 
   const applyGhostPosition = (x: number, y: number) => {
-    // Direct DOM write keeps the light-dot buttery on H5; React state still owns hover/phase.
-    const el = resolveGhostEl()
+    // Direct DOM writes keep the core responsive while CSS eases each trail layer behind it.
+    const el = resolveGhostEl(ghostRef.current)
     if (!el) return false
-    el.style.left = `${x}px`
-    el.style.top = `${y - GHOST_Y_OFFSET}px`
+    const transform = ghostTransform(x, y)
+    el.style.transform = transform
+    ghostTrailRefs.current.forEach((node) => {
+      const trailEl = resolveGhostEl(node)
+      if (trailEl) trailEl.style.transform = transform
+    })
     return true
   }
 
@@ -825,18 +835,41 @@ export default function OrganizeView({ ideas, projects, tags, current, onCurrent
       </View>
 
       {sortUi.active && sortUi.mode === 'dragging' && (
-        <View
-          ref={ghostRef}
-          className={`drag-ghost ${sortUi.phase} ${sortUi.hover ? 'magnet' : ''}`}
-          style={{
-            '--ghost-color': theme.ideaPalette[sortUi.ideaColorSlot],
-            left: `${sortUi.x}px`,
-            top: `${sortUi.y - GHOST_Y_OFFSET}px`
-          } as CSSProperties}
-        >
-          <View className='drag-ghost-aura' />
-          <View className='drag-ghost-core' />
-        </View>
+        <>
+          {Array.from({ length: GHOST_TRAIL_LAYERS }).map((_, index) => (
+            <View
+              key={index}
+              ref={(node) => { ghostTrailRefs.current[index] = node }}
+              className='drag-trail'
+              style={{
+                '--ghost-color': theme.ideaPalette[sortUi.ideaColorSlot],
+                '--trail-duration': `${75 + index * 38}ms`,
+                '--trail-opacity': `${0.4 - index * 0.055}`,
+                '--trail-scale': `${1 - index * 0.13}`,
+                '--trail-flicker-delay': `${index * -90}ms`,
+                transform: ghostTransform(sortUi.x, sortUi.y)
+              } as CSSProperties}
+            >
+              <View className='drag-trail-spark' />
+            </View>
+          ))}
+          <View
+            ref={ghostRef}
+            className={`drag-ghost ${sortUi.phase} ${sortUi.hover ? 'magnet' : ''}`}
+            style={{
+              '--ghost-color': theme.ideaPalette[sortUi.ideaColorSlot],
+              transform: ghostTransform(sortUi.x, sortUi.y)
+            } as CSSProperties}
+          >
+            <View className='drag-ghost-aura' />
+            <View className='drag-ghost-orbit'>
+              <View className='drag-orbit-particle particle-a' />
+              <View className='drag-orbit-particle particle-b' />
+            </View>
+            <View className='drag-ghost-ring' />
+            <View className='drag-ghost-core' />
+          </View>
+        </>
       )}
     </View>
   )

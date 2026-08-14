@@ -1,4 +1,5 @@
 .archive-stage {
+  --page-header-top: calc(16px + env(safe-area-inset-top, 0px));
   width: 100vw;
   height: 100dvh;
   min-height: 640px;
@@ -32,8 +33,8 @@
   position: absolute;
   z-index: 5;
   inset: 0 0 auto;
-  min-height: calc(78px + env(safe-area-inset-top));
-  padding: calc(16px + env(safe-area-inset-top)) 18px 10px;
+  min-height: calc(var(--page-header-top, 16px) + 62px);
+  padding: var(--page-header-top, 16px) 18px 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -57,7 +58,7 @@
 
 .archive-scroll {
   position: absolute;
-  inset: calc(84px + env(safe-area-inset-top)) 0 0;
+  inset: calc(var(--page-header-top, 16px) + 68px) 0 0;
   overflow-y: auto;
   padding: 14px 18px calc(28px + env(safe-area-inset-bottom));
   -webkit-overflow-scrolling: touch;
@@ -103,6 +104,39 @@
   .archive-stage { min-height: 100dvh; display: block; background: var(--page-bg); }
   .archive-shell { width: 100vw; max-width: none; height: 100dvh; min-height: 100dvh; border: 0; border-radius: 0; }
   .archive-list { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 1024px) {
+  .archive-stage.platform-h5 {
+    display: block;
+    min-height: 100dvh;
+    background: var(--page-bg);
+  }
+
+  .archive-stage.platform-h5 .archive-shell {
+    width: 100vw;
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .archive-stage.platform-h5 .archive-topbar {
+    padding-left: 36px;
+    padding-right: 36px;
+  }
+
+  .archive-stage.platform-h5 .archive-scroll {
+    padding-left: max(36px, calc((100vw - 1180px) / 2));
+    padding-right: max(36px, calc((100vw - 1180px) / 2));
+  }
+
+  .archive-stage.platform-h5 .archive-list {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

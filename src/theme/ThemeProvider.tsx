@@ -10,6 +10,7 @@ import {
 import type { ThemeDefinition, ThemeId, ThemeStyle } from './themes'
 
 const THEME_STORAGE_KEY = 'idea-space-theme-v1'
+const MINI_PROGRAM_HEADER_GAP = 10
 
 interface ThemeContextValue {
   themeId: ThemeId
@@ -27,6 +28,23 @@ function loadThemeId(): ThemeId {
   } catch (error) {
     console.warn('[IdeaSpace] load theme failed', error)
     return DEFAULT_THEME_ID
+  }
+}
+
+function getMiniProgramHeaderTop(): number | null {
+  if (process.env.TARO_ENV === 'h5') return null
+
+  try {
+    const capsule = Taro.getMenuButtonBoundingClientRect?.()
+    if (capsule && Number.isFinite(capsule.bottom) && capsule.bottom > 0) {
+      return Math.ceil(capsule.bottom + MINI_PROGRAM_HEADER_GAP)
+    }
+
+    const windowInfo = Taro.getWindowInfo?.()
+    const statusBarHeight = windowInfo?.statusBarHeight || Taro.getSystemInfoSync().statusBarHeight || 0
+    return Math.ceil(statusBarHeight + MINI_PROGRAM_HEADER_GAP)
+  } catch {
+    return null
   }
 }
 
@@ -50,8 +68,15 @@ function syncPlatformBackground(theme: ThemeDefinition) {
 
 export function ThemeProvider({ children }: PropsWithChildren) {
   const [themeId, setThemeId] = useState<ThemeId>(loadThemeId)
+  const [miniProgramHeaderTop] = useState(getMiniProgramHeaderTop)
   const theme = THEMES[themeId]
-  const themeStyle = useMemo(() => getThemeStyle(theme), [theme])
+  const themeStyle = useMemo(() => {
+    const style = getThemeStyle(theme)
+    if (miniProgramHeaderTop !== null) {
+      style['--page-header-top'] = `${miniProgramHeaderTop}px`
+    }
+    return style
+  }, [miniProgramHeaderTop, theme])
 
   useEffect(() => {
     syncPlatformBackground(theme)
@@ -76,4 +101,3 @@ export function useTheme(): ThemeContextValue {
   if (!context) throw new Error('useTheme must be used inside ThemeProvider')
   return context
 }
-

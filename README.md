@@ -91,7 +91,7 @@ npm run test:backend
 node backend/main.mjs
 ```
 
-H5 默认连接 106 服务器的 `http://106.55.78.71:8769`，本地执行 `npm run dev:h5` 时也使用这套云端数据。开发服务器会同时支持 localhost、127.0.0.1 和当前局域网地址；如果局域网 IP 变化，部署后端时使用 `make up_backend DEV_LAN_HOST=新的局域网IP`。仅在需要临时切换后端时，才通过构建时变量 `TARO_APP_API_BASE_URL` 覆盖。
+H5 默认连接 106 服务器的 `http://106.55.78.71:8769`，本地执行 `npm run dev:h5` 时也使用这套云端数据。后端当前不限制网页来源；仅在需要临时切换后端时，才通过构建时变量 `TARO_APP_API_BASE_URL` 覆盖。
 
 ## 部署到 106 服务器
 
@@ -105,7 +105,7 @@ make up_106      # 依次部署后端和客户端
 
 首次执行 `make up_backend` 会输出一次 `GLIMMER_INITIAL_PASSWORD`。请立即保存，后续部署会保留服务端鉴权配置且不再显示明文口令。
 
-当前两个端口使用 HTTP 公网访问。正式存放敏感内容前，应配置 HTTPS 域名，并通过 `API_BASE_URL` 与 `ALLOWED_ORIGINS` 切换地址。
+当前两个端口使用 HTTP 公网访问，后端允许任意网页来源调用，但同步接口仍需要登录令牌。正式存放敏感内容前，应配置 HTTPS 域名，并通过 `API_BASE_URL` 切换地址。
 
 ## 注意
 

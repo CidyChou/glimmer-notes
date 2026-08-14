@@ -13,12 +13,6 @@ body {
   scrollbar-width: none;
 }
 
-*::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
-
 view,
 text,
 button,

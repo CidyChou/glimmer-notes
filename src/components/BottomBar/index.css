@@ -146,7 +146,8 @@
   background: linear-gradient(90deg, transparent, rgba(var(--glass-edge-rgb), .08) 24%, rgba(var(--glass-edge-rgb), .15) 50%, rgba(var(--glass-edge-rgb), .07) 76%, transparent);
 }
 
-.nav-dock > * {
+.nav-dock .nav-action,
+.nav-dock .add-well {
   position: relative;
   z-index: 4;
 }

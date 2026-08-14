@@ -286,7 +286,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <View className='settings-stage theme-root' style={themeStyle}>
+    <View className={`settings-stage theme-root ${process.env.TARO_ENV === 'h5' ? 'platform-h5' : 'platform-mini'}`} style={themeStyle}>
       <View className='settings-shell'>
         <View className='settings-ambient settings-ambient-a' />
         <View className='settings-ambient settings-ambient-b' />
@@ -295,7 +295,7 @@ export default function SettingsPage() {
           <View
             className='settings-back'
             ariaRole='button'
-            ariaLabel='返回 Idea Space'
+            ariaLabel='返回光屿札记'
             onClick={goBack}
           >
             <View className='back-glyph' />
@@ -615,7 +615,7 @@ export default function SettingsPage() {
             <View className='about-card'>
               <View className='about-mark'><View className='about-core' /></View>
               <View>
-                <Text className='about-title'>Idea Space</Text>
+                <Text className='about-title'>光屿札记</Text>
                 <Text className='about-copy'>先捕捉，稍后整理。</Text>
               </View>
             </View>

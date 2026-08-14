@@ -12,7 +12,7 @@
   margin: 0 0 8px;
 }
 
-.md-view > :last-child {
+.md-block-last {
   margin-bottom: 0;
 }
 

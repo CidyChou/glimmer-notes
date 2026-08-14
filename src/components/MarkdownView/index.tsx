@@ -132,15 +132,17 @@ function ListItemRow({
 function renderBlock(
   block: BlockNode,
   index: number,
+  isLast: boolean,
   onToggleTask: ((lineIndex: number) => void) | undefined,
   taskToggleMode: 'row' | 'checkbox'
 ) {
   const key = `b-${index}`
+  const lastClass = isLast ? ' md-block-last' : ''
 
   switch (block.type) {
     case 'heading':
       return (
-        <View key={key} className={`md-h md-h${block.level}`}>
+        <View key={key} className={`md-h md-h${block.level}${lastClass}`}>
           <Text className={`md-h-text md-h${block.level}-text`}>
             {renderInline(block.children, key)}
           </Text>
@@ -148,19 +150,19 @@ function renderBlock(
       )
     case 'paragraph':
       return (
-        <View key={key} className='md-p'>
+        <View key={key} className={`md-p${lastClass}`}>
           <Text className='md-p-text'>{renderInline(block.children, key)}</Text>
         </View>
       )
     case 'blockquote':
       return (
-        <View key={key} className='md-quote'>
+        <View key={key} className={`md-quote${lastClass}`}>
           <Text className='md-quote-text'>{renderInline(block.children, key)}</Text>
         </View>
       )
     case 'list':
       return (
-        <View key={key} className={`md-list ${block.ordered ? 'ordered' : 'unordered'}`}>
+        <View key={key} className={`md-list ${block.ordered ? 'ordered' : 'unordered'}${lastClass}`}>
           {block.items.map((item, i) => (
             <ListItemRow
               key={`li-${item.lineIndex}-${i}`}
@@ -184,7 +186,7 @@ export default function MarkdownView({ source, onToggleTask, taskToggleMode = 'r
 
   return (
     <View className={`md-view ${className || ''}`.trim()}>
-      {blocks.map((block, index) => renderBlock(block, index, onToggleTask, taskToggleMode))}
+      {blocks.map((block, index) => renderBlock(block, index, index === blocks.length - 1, onToggleTask, taskToggleMode))}
     </View>
   )
 }
