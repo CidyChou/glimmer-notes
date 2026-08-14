@@ -314,9 +314,10 @@ export default function IndexPage() {
 
   const applyHistory = (direction: 'undo' | 'redo') => {
     const result = direction === 'undo'
-      ? undoIdeaChange({ ideas, projects, tags })
-      : redoIdeaChange({ ideas, projects, tags })
+      ? undoIdeaChange({ ideas: ideasRef.current, projects, tags })
+      : redoIdeaChange({ ideas: ideasRef.current, projects, tags })
     if (!result) return
+    ideasRef.current = result.ideas
     setIdeas(result.ideas)
     scheduleSync()
     flash(`${direction === 'undo' ? '已撤回' : '已重做'}：${result.label}`)
@@ -473,6 +474,12 @@ export default function IndexPage() {
             onCopy={() => void copyIdea(selectedIdea)}
             onArchive={() => archiveIdea(selectedIdea.id)}
             onAutoSave={autoSaveSelected}
+            canUndo={historyState.canUndo}
+            canRedo={historyState.canRedo}
+            undoLabel={historyState.undoLabel}
+            redoLabel={historyState.redoLabel}
+            onUndo={() => applyHistory('undo')}
+            onRedo={() => applyHistory('redo')}
             onTogglePin={togglePin}
             onDelete={deleteSelected}
           />

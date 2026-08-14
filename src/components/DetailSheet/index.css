@@ -69,13 +69,87 @@
 }
 
 .detail-top {
+  position: sticky;
+  z-index: 4;
+  top: 0;
   min-height: 44px;
-  padding-left: 3px;
+  margin: 0 -4px;
+  padding: 0 4px 5px 7px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(var(--surface-high-rgb), .74) 0%,
+    rgba(var(--surface-high-rgb), .62) 72%,
+    rgba(var(--surface-high-rgb), 0) 100%
+  );
+  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  backdrop-filter: blur(18px) saturate(120%);
 }
+
+.detail-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-history-controls {
+  width: 72px;
+  height: 44px;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid rgba(var(--border-rgb), .075);
+  border-radius: 14px;
+  background: rgba(var(--surface-rgb), .80);
+  box-shadow: inset 0 1px 0 rgba(var(--highlight-rgb), .035);
+}
+
+.detail-history-btn {
+  flex: 1;
+  width: 35px;
+  height: 42px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .14s, opacity .18s, background-color .2s;
+}
+
+.detail-history-btn.enabled:active {
+  transform: scale(.9);
+  background: rgba(var(--highlight-rgb), .06);
+}
+
+.detail-history-btn.disabled {
+  opacity: var(--disabled-control-opacity);
+  pointer-events: none;
+}
+
+.detail-history-divider {
+  width: 1px;
+  height: 20px;
+  align-self: center;
+  background: rgba(var(--border-rgb), .10);
+}
+
+.detail-history-icon {
+  width: 25px;
+  height: 25px;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  opacity: .82;
+  filter: var(--image-icon-filter);
+}
+
+.detail-history-redo-icon { transform: scaleX(-1); }
 
 .detail-kicker,
 .detail-time { display: block; }
@@ -98,9 +172,11 @@
   height: 44px;
   margin: 0;
   padding: 0;
+  border: 1px solid rgba(var(--border-rgb), .075);
   border-radius: 14px;
-  background: var(--surface-strong);
-  color: var(--text-secondary);
+  background: rgba(var(--surface-rgb), .80);
+  box-shadow: inset 0 1px 0 rgba(var(--highlight-rgb), .035);
+  color: var(--text-soft);
   font-size: 20px;
   line-height: 44px;
   transition: background .16s, color .16s, transform .14s;
@@ -108,7 +184,7 @@
 
 .close-btn:active {
   color: var(--text-primary);
-  background: var(--surface-high);
+  background: rgba(var(--surface-high-rgb), .84);
   transform: scale(.96);
 }
 
@@ -608,6 +684,10 @@
 
 @media (max-width: 360px) {
   .detail-sheet { padding-left: 12px; padding-right: 12px; }
+  .detail-top-actions { gap: 6px; }
+  .detail-history-controls { width: 68px; height: 42px; }
+  .detail-history-btn { width: 33px; height: 40px; }
+  .detail-history-icon { width: 23px; height: 23px; }
   .detail-body-input,
   .detail-body-input .taro-textarea { min-height: 58px; }
   .detail-save-btn { min-width: 104px; padding: 0 14px; }

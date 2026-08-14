@@ -80,6 +80,8 @@
   outline: 0;
   resize: none;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   color: transparent;
   -webkit-text-fill-color: transparent;
   background: transparent;
@@ -102,6 +104,8 @@
   border: 0;
   outline: 0;
   resize: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   color: transparent;
   -webkit-text-fill-color: transparent;
   background: transparent;
@@ -109,6 +113,25 @@
   line-height: 26px;
   caret-color: var(--accent);
   box-sizing: border-box;
+}
+
+.line-md-textarea::-webkit-scrollbar,
+.line-md-textarea .taro-textarea::-webkit-scrollbar,
+.line-md-textarea .weui-textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.line-md-editor.composing .line-md-live-layer {
+  opacity: 0;
+}
+
+.line-md-editor.composing .line-md-textarea,
+.line-md-editor.composing .line-md-textarea .taro-textarea,
+.line-md-editor.composing .line-md-textarea .weui-textarea {
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
 }
 
 .line-md-textarea::placeholder,
@@ -124,6 +147,12 @@
 .line-md-textarea .weui-textarea::selection {
   color: transparent;
   background: rgba(var(--accent-rgb), .24);
+}
+
+.line-md-editor.composing .line-md-textarea::selection,
+.line-md-editor.composing .line-md-textarea .taro-textarea::selection,
+.line-md-editor.composing .line-md-textarea .weui-textarea::selection {
+  color: var(--text-primary);
 }
 
 .line-md-preview {

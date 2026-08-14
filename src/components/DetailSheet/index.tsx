@@ -1,4 +1,4 @@
-import { Button, Input, ScrollView, Text, View } from '@tarojs/components'
+import { Button, Image, Input, ScrollView, Text, View } from '@tarojs/components'
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import LineMarkdownEditor from '@/components/LineMarkdownEditor'
@@ -9,6 +9,7 @@ import { splitIdeaText } from '@/utils/ideaText'
 import type { Idea, IdeaProject, IdeaTag, PriorityKey } from '@/types/idea'
 import { useTheme } from '@/theme'
 import type { IdeaColorSlot } from '@/theme'
+import historyArrowIcon from '@/assets/icons/history-arrow.png'
 import './index.css'
 
 interface DrawerDragState {
@@ -37,6 +38,12 @@ interface Props {
   onCreateProject: (name: string, colorSlot: IdeaColorSlot) => IdeaProject | null
   onTagToggle: (tagId: string) => void
   onAutoSave: (title: string, details: string, reason: LineMarkdownCommitReason) => void
+  canUndo: boolean
+  canRedo: boolean
+  undoLabel: string | null
+  redoLabel: string | null
+  onUndo: () => void
+  onRedo: () => void
   onTogglePin: () => void
   onCopy: () => void
   onArchive: () => void
@@ -54,6 +61,12 @@ export default function DetailSheet({
   onCreateProject,
   onTagToggle,
   onAutoSave,
+  canUndo,
+  canRedo,
+  undoLabel,
+  redoLabel,
+  onUndo,
+  onRedo,
   onTogglePin,
   onCopy,
   onArchive,
@@ -86,6 +99,14 @@ export default function DetailSheet({
     velocity: 0
   })
   onCloseRef.current = onClose
+
+  useEffect(() => {
+    const next = splitIdeaText(idea.text)
+    titleRef.current = next.title
+    detailsRef.current = next.details
+    setTitle(next.title)
+    setDetails(next.details)
+  }, [idea.text])
 
   useEffect(() => {
     if (!open) {
@@ -279,7 +300,28 @@ export default function DetailSheet({
           <Text className='detail-kicker'>任务详情</Text>
           <Text className='detail-time'>{formatDetailTime(idea.createdAt)}</Text>
         </View>
-        <Button className='close-btn' ariaLabel='关闭详情面板' onClick={closeSheet}>×</Button>
+        <View className='detail-top-actions'>
+          <View className='detail-history-controls' ariaLabel='任务历史'>
+            <Button
+              className={`detail-history-btn ${canUndo ? 'enabled' : 'disabled'}`}
+              disabled={!canUndo || closing}
+              ariaLabel={undoLabel ? `撤回：${undoLabel}` : '撤回上一步操作'}
+              onClick={onUndo}
+            >
+              <Image className='detail-history-icon' src={historyArrowIcon} mode='scaleToFill' />
+            </Button>
+            <View className='detail-history-divider' />
+            <Button
+              className={`detail-history-btn ${canRedo ? 'enabled' : 'disabled'}`}
+              disabled={!canRedo || closing}
+              ariaLabel={redoLabel ? `重做：${redoLabel}` : '重做下一步操作'}
+              onClick={onRedo}
+            >
+              <Image className='detail-history-icon detail-history-redo-icon' src={historyArrowIcon} mode='scaleToFill' />
+            </Button>
+          </View>
+          <Button className='close-btn' ariaLabel='关闭详情面板' onClick={closeSheet}>×</Button>
+        </View>
       </View>
 
       <View className='detail-editor detail-editor-live'>

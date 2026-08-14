@@ -162,6 +162,7 @@ function applyArrowSelection(textarea: HTMLTextAreaElement, key: ArrowKey, exten
 export default function LineMarkdownEditor({ value, onChange, onCommit, className }: Props) {
   const [draft, setDraft] = useState(value)
   const [focused, setFocused] = useState(false)
+  const [composing, setComposing] = useState(false)
   const [requestedCaret, setRequestedCaret] = useState(-1)
   const [selection, setSelection] = useState<EditorSelection>({ start: 0, end: 0 })
   const [editorScrollTop, setEditorScrollTop] = useState(0)
@@ -247,6 +248,7 @@ export default function LineMarkdownEditor({ value, onChange, onCommit, classNam
     if (!focusedRef.current) return
     pointerDownRef.current = false
     focusedRef.current = false
+    setComposing(false)
     onCommitRef.current(draftRef.current, 'edit')
     setFocused(false)
   }
@@ -301,6 +303,8 @@ export default function LineMarkdownEditor({ value, onChange, onCommit, classNam
         const textarea = textareaFromEvent(event)
         if (textarea) setEditorScrollTop(textarea.scrollTop)
       },
+      onCompositionStart: () => setComposing(true),
+      onCompositionEnd: () => setComposing(false),
       onKeyDown: (event: KeyboardEvent) => {
         if (event.isComposing) return
         if (
@@ -349,6 +353,8 @@ export default function LineMarkdownEditor({ value, onChange, onCommit, classNam
       ['mousedown', handlers.onMouseDown as EventListener],
       ['mouseup', handlers.onMouseUp as EventListener],
       ['scroll', handlers.onScroll as EventListener],
+      ['compositionstart', handlers.onCompositionStart as EventListener],
+      ['compositionend', handlers.onCompositionEnd as EventListener],
       ['keydown', handlers.onKeyDown as EventListener]
     ]
     listeners.forEach(([name, listener]) => textareaRoot.addEventListener(name, listener, true))
@@ -386,7 +392,7 @@ export default function LineMarkdownEditor({ value, onChange, onCommit, classNam
   }
 
   return (
-    <View className={`line-md-editor ${className || ''}`.trim()}>
+    <View className={`line-md-editor ${composing ? 'composing' : ''} ${className || ''}`.trim()}>
       <View className='line-md-continuous'>
         <View
           className='line-md-live-layer'
