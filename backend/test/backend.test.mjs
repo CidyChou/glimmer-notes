@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { hashPassword, createSessionToken, verifySessionToken } from '../lib/auth.mjs'
+import { createSessionToken, verifySessionToken } from '../lib/auth.mjs'
 import { JsonSyncStore, mergeStates } from '../lib/store.mjs'
+import { migrateLegacyStore, spaceIdForKey } from '../lib/spaces.mjs'
 import { createApiServer } from '../server.mjs'
+
+const TEST_SPACE_ID = spaceIdForKey('zdy')
 
 function idea(overrides = {}) {
   return {
@@ -118,11 +121,13 @@ test('tags sync by id and keep the newest version', () => {
   })
 })
 
-test('session tokens are signed and expire', () => {
-  const token = createSessionToken('secret', 1_000, 10)
+test('session tokens are signed, bound to a space, and expire', () => {
+  const token = createSessionToken('secret', 1_000, 10, TEST_SPACE_ID)
   assert.equal(verifySessionToken(token, 'secret', 10_000).expiresAt, 11_000)
+  assert.equal(verifySessionToken(token, 'secret', 10_000).spaceId, TEST_SPACE_ID)
   assert.equal(verifySessionToken(token, 'wrong', 10_000), null)
   assert.equal(verifySessionToken(token, 'secret', 11_000), null)
+  assert.equal(createSessionToken('secret', 1_000, 10, TEST_SPACE_ID).includes('.'), true)
 })
 
 test('JSON store persists merged state across restarts', async () => {
@@ -141,19 +146,20 @@ test('JSON store persists merged state across restarts', async () => {
   }
 })
 
-test('HTTP API authenticates, allows all origins, validates and syncs', async () => {
+async function listen(server) {
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const address = server.address()
+  return `http://127.0.0.1:${address.port}`
+}
+
+test('HTTP API opens a space by key, allows all origins, validates and syncs', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'glimmer-api-'))
-  const passwordSalt = 'test-salt'
   const server = await createApiServer({
-    dataFile: path.join(directory, 'store.json'),
-    passwordSalt,
-    passwordHash: hashPassword('correct horse', passwordSalt),
+    dataDir: directory,
     sessionSecret: 'test-session-secret',
     sessionTtlSeconds: 60
   })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const address = server.address()
-  const baseUrl = `http://127.0.0.1:${address.port}`
+  const baseUrl = await listen(server)
   try {
     const health = await fetch(`${baseUrl}/health`)
     assert.equal(health.status, 200)
@@ -161,18 +167,20 @@ test('HTTP API authenticates, allows all origins, validates and syncs', async ()
     const rejected = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: 'wrong' })
+      body: JSON.stringify({ key: '   ' })
     })
-    assert.equal(rejected.status, 401)
+    assert.equal(rejected.status, 400)
 
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: 'http://unlisted-client.example' },
-      body: JSON.stringify({ password: 'correct horse' })
+      body: JSON.stringify({ key: 'zdy' })
     })
     assert.equal(login.status, 200)
     assert.equal(login.headers.get('access-control-allow-origin'), '*')
-    const { token } = await login.json()
+    const body = await login.json()
+    assert.equal(body.spaceKey, 'zdy')
+    const { token } = body
 
     const preflight = await fetch(`${baseUrl}/api/sync`, {
       method: 'OPTIONS',
@@ -201,6 +209,91 @@ test('HTTP API authenticates, allows all origins, validates and syncs', async ()
     assert.equal((await synced.json()).ideas[0].id, 'idea-1')
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('different space keys keep isolated data', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'glimmer-spaces-'))
+  const server = await createApiServer({
+    dataDir: directory,
+    sessionSecret: 'test-session-secret',
+    sessionTtlSeconds: 60
+  })
+  const baseUrl = await listen(server)
+  try {
+    const loginA = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'zdy' })
+    })
+    const loginB = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'other-space' })
+    })
+    const { token: tokenA } = await loginA.json()
+    const { token: tokenB, spaceKey } = await loginB.json()
+    assert.equal(spaceKey, 'other-space')
+
+    await fetch(`${baseUrl}/api/sync`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenA}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ideas: [idea({ id: 'idea-zdy', text: 'zdy note' })], tombstones: [] })
+    })
+    await fetch(`${baseUrl}/api/sync`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenB}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ideas: [idea({ id: 'idea-other', text: 'other note' })], tombstones: [] })
+    })
+
+    const remoteA = await (await fetch(`${baseUrl}/api/sync`, { headers: { Authorization: `Bearer ${tokenA}` } })).json()
+    const remoteB = await (await fetch(`${baseUrl}/api/sync`, { headers: { Authorization: `Bearer ${tokenB}` } })).json()
+    assert.equal(remoteA.ideas.length, 1)
+    assert.equal(remoteA.ideas[0].id, 'idea-zdy')
+    assert.equal(remoteB.ideas.length, 1)
+    assert.equal(remoteB.ideas[0].id, 'idea-other')
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('legacy store.json is copied into the zdy space', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'glimmer-migrate-'))
+  try {
+    await writeFile(path.join(directory, 'store.json'), JSON.stringify({
+      schemaVersion: 3,
+      ideas: [idea({ id: 'legacy-1', text: 'migrated' })],
+      projects: [],
+      tags: [],
+      tombstones: []
+    }))
+    const result = await migrateLegacyStore(directory, 'zdy')
+    assert.equal(result.migrated, true)
+    const again = await migrateLegacyStore(directory, 'zdy')
+    assert.equal(again.migrated, false)
+
+    const server = await createApiServer({
+      dataDir: directory,
+      sessionSecret: 'test-session-secret',
+      sessionTtlSeconds: 60
+    })
+    const baseUrl = await listen(server)
+    try {
+      const login = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'zdy' })
+      })
+      const { token } = await login.json()
+      const remote = await (await fetch(`${baseUrl}/api/sync`, { headers: { Authorization: `Bearer ${token}` } })).json()
+      assert.equal(remote.ideas[0].id, 'legacy-1')
+      assert.equal(remote.ideas[0].text, 'migrated')
+    } finally {
+      await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+    }
+  } finally {
     await rm(directory, { recursive: true, force: true })
   }
 })

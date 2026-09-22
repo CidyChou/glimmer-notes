@@ -7,6 +7,7 @@ import { DEFAULT_PROJECT_ID, LEGACY_PROJECT_TAG_ID } from '@/types/idea'
 import type { Idea, IdeaProject, IdeaTag, IdeaTombstone } from '@/types/idea'
 
 const TOKEN_STORAGE_KEY = 'idea-space-sync-token-v1'
+const SPACE_KEY_STORAGE_KEY = 'idea-space-sync-space-key-v1'
 const AUTO_SYNC_STORAGE_KEY = 'idea-space-auto-sync-v1'
 const SYNC_INITIALIZED_STORAGE_KEY = 'idea-space-sync-initialized-v1'
 const API_BASE_URL = __API_BASE_URL__.replace(/\/$/, '')
@@ -36,6 +37,7 @@ export interface SyncStatus {
   phase: SyncPhase
   authenticated: boolean
   autoSyncEnabled: boolean
+  spaceKey: string
   conflict: SyncConflict | null
   detail: string
   lastSyncedAt: number | null
@@ -88,17 +90,36 @@ function loadSyncInitialized(existingToken: string): boolean {
   }
 }
 
+function loadSpaceKey(): string {
+  try {
+    const value = Taro.getStorageSync(SPACE_KEY_STORAGE_KEY) as unknown
+    return typeof value === 'string' ? value : ''
+  } catch {
+    return ''
+  }
+}
+
+function signedOutDetail() {
+  return '输入空间密钥即可在设备间同步'
+}
+
+function connectedDetail() {
+  return spaceKey ? `已连接空间 ${spaceKey}` : '本地与云端已同步'
+}
+
 let token = loadToken()
+let spaceKey = loadSpaceKey()
 let autoSyncEnabled = loadAutoSyncEnabled()
 let syncInitialized = loadSyncInitialized(token)
 let status: SyncStatus = {
   phase: token ? 'offline' : 'signed-out',
   authenticated: Boolean(token),
   autoSyncEnabled,
+  spaceKey,
   conflict: null,
   detail: token
     ? autoSyncEnabled ? '等待连接云端' : '自动同步已关闭，可手动同步'
-    : '登录后可在设备间同步',
+    : signedOutDetail(),
   lastSyncedAt: null
 }
 const statusListeners = new Set<StatusListener>()
@@ -114,6 +135,16 @@ function updateStatus(next: Partial<SyncStatus>) {
   statusListeners.forEach((listener) => listener(status))
 }
 
+function storeSpaceKey(next: string) {
+  spaceKey = next
+  try {
+    if (next) Taro.setStorageSync(SPACE_KEY_STORAGE_KEY, next)
+    else Taro.removeStorageSync(SPACE_KEY_STORAGE_KEY)
+  } catch (error) {
+    console.warn('[IdeaSpace] save space key failed', error)
+  }
+}
+
 function storeToken(next: string, initialized = syncInitialized) {
   token = next
   syncInitialized = next ? initialized : false
@@ -122,8 +153,10 @@ function storeToken(next: string, initialized = syncInitialized) {
       Taro.setStorageSync(TOKEN_STORAGE_KEY, next)
       Taro.setStorageSync(SYNC_INITIALIZED_STORAGE_KEY, syncInitialized)
     } else {
+      spaceKey = ''
       Taro.removeStorageSync(TOKEN_STORAGE_KEY)
       Taro.removeStorageSync(SYNC_INITIALIZED_STORAGE_KEY)
+      Taro.removeStorageSync(SPACE_KEY_STORAGE_KEY)
     }
   } catch (error) {
     console.warn('[IdeaSpace] save sync session failed', error)
@@ -277,7 +310,8 @@ async function performSync(initial: boolean) {
   updateStatus({
     phase: 'synced',
     authenticated: true,
-    detail: '本地与云端已同步',
+    spaceKey,
+    detail: connectedDetail(),
     lastSyncedAt: Date.now()
   })
 }
@@ -294,6 +328,7 @@ async function inspectInitialSync(): Promise<void> {
     updateStatus({
       phase: 'conflict',
       authenticated: true,
+      spaceKey,
       conflict: {
         localIdeaCount: stripDemoDefaults(local).ideas.length,
         remoteIdeaCount: remote.ideas.length
@@ -314,15 +349,16 @@ async function inspectInitialSync(): Promise<void> {
   updateStatus({
     phase: 'synced',
     authenticated: true,
+    spaceKey,
     conflict: null,
-    detail: '本地与云端已同步',
+    detail: connectedDetail(),
     lastSyncedAt: Date.now()
   })
 }
 
 async function runSync(initial = false): Promise<void> {
   if (!token) {
-    updateStatus({ phase: 'signed-out', authenticated: false, detail: '登录后可在设备间同步' })
+    updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: signedOutDetail() })
     return
   }
   if (syncPromise) {
@@ -345,12 +381,13 @@ async function runSync(initial = false): Promise<void> {
   } catch (error) {
     if (error instanceof ApiError && error.statusCode === 401) {
       storeToken('')
-      updateStatus({ phase: 'signed-out', authenticated: false, detail: '登录已过期，请重新登录' })
+      updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: '登录已过期，请重新连接' })
     } else {
       console.warn('[IdeaSpace] cloud sync failed', error)
       updateStatus({
         phase: error instanceof ApiError ? 'error' : 'offline',
         authenticated: Boolean(token),
+        spaceKey,
         detail: error instanceof ApiError ? '同步失败，请稍后重试' : '云端暂时不可用，本地数据已保存'
       })
     }
@@ -385,18 +422,19 @@ export function scheduleSync(): void {
 
 export async function initializeSync(): Promise<void> {
   if (!token) {
-    updateStatus({ phase: 'signed-out', authenticated: false, detail: '登录后可在设备间同步' })
+    updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: signedOutDetail() })
     return
   }
   if (initializePromise) return initializePromise
   initializePromise = (async () => {
-    updateStatus({ phase: 'syncing', authenticated: true, detail: '正在连接云端…' })
+    updateStatus({ phase: 'syncing', authenticated: true, spaceKey, detail: '正在连接云端…' })
     await request('/api/auth/session', 'GET')
     if (!syncInitialized) await inspectInitialSync()
     else if (autoSyncEnabled) await runSync()
     else updateStatus({
       phase: 'synced',
       authenticated: true,
+      spaceKey,
       detail: '自动同步已关闭，可手动同步'
     })
   })()
@@ -405,25 +443,27 @@ export async function initializeSync(): Promise<void> {
   } catch (error) {
     if (error instanceof ApiError && error.statusCode === 401) {
       storeToken('')
-      updateStatus({ phase: 'signed-out', authenticated: false, detail: '登录已过期，请重新登录' })
+      updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: '登录已过期，请重新连接' })
     } else {
-      updateStatus({ phase: 'offline', authenticated: Boolean(token), detail: '云端暂时不可用，本地数据已保存' })
+      updateStatus({ phase: 'offline', authenticated: Boolean(token), spaceKey, detail: '云端暂时不可用，本地数据已保存' })
     }
   } finally {
     initializePromise = null
   }
 }
 
-export async function loginAndSync(password: string): Promise<'synced' | 'conflict'> {
-  updateStatus({ phase: 'syncing', authenticated: false, detail: '正在验证访问口令…' })
+export async function loginAndSync(key: string): Promise<'synced' | 'conflict'> {
+  const nextKey = key.trim()
+  updateStatus({ phase: 'syncing', authenticated: false, detail: '正在连接云端空间…' })
   try {
-    const result = await request<{ token: string; expiresAt: number }>('/api/auth/login', 'POST', { password })
+    const result = await request<{ token: string; expiresAt: number; spaceKey?: string }>('/api/auth/login', 'POST', { key: nextKey })
     storeToken(result.token, false)
+    storeSpaceKey(result.spaceKey || nextKey)
     await inspectInitialSync()
     return status.phase === 'conflict' ? 'conflict' : 'synced'
   } catch (error) {
-    if (!token) updateStatus({ phase: 'signed-out', authenticated: false, detail: '登录后可在设备间同步' })
-    if (error instanceof ApiError && error.statusCode === 401) throw new Error('访问口令不正确')
+    if (!token) updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: signedOutDetail() })
+    if (error instanceof ApiError && error.statusCode === 400) throw new Error('密钥需要 1 到 64 个字符')
     if (error instanceof ApiError && error.statusCode === 429) throw new Error('尝试次数过多，请稍后再试')
     throw new Error(connectionErrorMessage(error))
   }
@@ -432,7 +472,7 @@ export async function loginAndSync(password: string): Promise<'synced' | 'confli
 export function logoutSync(): void {
   pendingRemoteState = null
   storeToken('')
-  updateStatus({ phase: 'signed-out', authenticated: false, conflict: null, detail: '已退出云端同步', lastSyncedAt: null })
+  updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', conflict: null, detail: '已退出云端同步', lastSyncedAt: null })
 }
 
 export async function retrySync(): Promise<void> {
@@ -453,8 +493,9 @@ export function setAutoSyncEnabled(enabled: boolean): void {
   }
   updateStatus({
     autoSyncEnabled: enabled,
+    spaceKey,
     detail: enabled
-      ? token ? '自动同步已开启' : '登录后将自动同步'
+      ? token ? '自动同步已开启' : '连接后将自动同步'
       : token ? '自动同步已关闭，可手动同步' : '自动同步已关闭'
   })
   if (enabled && token && status.phase !== 'conflict') scheduleSync()
@@ -477,6 +518,7 @@ export async function resolveInitialSync(choice: InitialSyncChoice): Promise<voi
   updateStatus({
     phase: 'synced',
     authenticated: true,
+    spaceKey,
     conflict: null,
     detail: choice === 'merge' ? '本地与云端内容已合并' : '已使用云端内容',
     lastSyncedAt: Date.now()
@@ -485,7 +527,7 @@ export async function resolveInitialSync(choice: InitialSyncChoice): Promise<voi
 
 export async function manualSync(): Promise<void> {
   if (!token) {
-    Taro.eventCenter.trigger('idea-sync-feedback', '请先在设置中连接云端')
+    Taro.eventCenter.trigger('idea-sync-feedback', '请先连接云端空间')
     return
   }
   if (status.phase === 'conflict') {

@@ -1,11 +1,12 @@
 import http from 'node:http'
-import { createSessionToken, verifyPassword, verifySessionToken } from './lib/auth.mjs'
+import path from 'node:path'
+import { createSessionToken, verifySessionToken } from './lib/auth.mjs'
 import { ValidationError } from './lib/schema.mjs'
-import { JsonSyncStore } from './lib/store.mjs'
+import { isValidSpaceKey, normalizeSpaceKey, SpaceRegistry, spaceIdForKey } from './lib/spaces.mjs'
 
 const JSON_LIMIT = 1024 * 1024
 const LOGIN_WINDOW_MS = 15 * 60 * 1000
-const LOGIN_ATTEMPTS = 5
+const LOGIN_ATTEMPTS = 30
 
 function json(response, status, body, extraHeaders = {}) {
   response.writeHead(status, {
@@ -45,8 +46,8 @@ function bearerToken(request) {
 }
 
 export async function createApiServer(config) {
-  const store = config.store || new JsonSyncStore(config.dataFile)
-  await store.init()
+  const registry = config.registry || new SpaceRegistry(config.dataDir)
+  await registry.init()
   const failures = new Map()
 
   return http.createServer(async (request, response) => {
@@ -79,24 +80,28 @@ export async function createApiServer(config) {
         }
 
         const body = await readJson(request)
-        if (!verifyPassword(body.password, config.passwordSalt, config.passwordHash)) {
+        const key = normalizeSpaceKey(body.key ?? body.password)
+        if (!isValidSpaceKey(key)) {
           const next = current && current.resetAt > now
             ? { ...current, count: current.count + 1 }
             : { count: 1, resetAt: now + LOGIN_WINDOW_MS }
           failures.set(ip, next)
-          return json(response, 401, { error: 'invalid_password' }, corsHeaders)
+          return json(response, 400, { error: 'invalid_key', message: 'space key must be 1 to 64 characters' }, corsHeaders)
         }
 
-        failures.delete(ip)
-        const token = createSessionToken(config.sessionSecret, now, config.sessionTtlSeconds)
+        const spaceId = spaceIdForKey(key)
+        await registry.getStore(spaceId)
+        const token = createSessionToken(config.sessionSecret, now, config.sessionTtlSeconds, spaceId)
         return json(response, 200, {
           token,
-          expiresAt: now + config.sessionTtlSeconds * 1000
+          expiresAt: now + config.sessionTtlSeconds * 1000,
+          spaceKey: key
         }, corsHeaders)
       }
 
       const session = verifySessionToken(bearerToken(request), config.sessionSecret)
       if (!session) return json(response, 401, { error: 'unauthorized' }, corsHeaders)
+      const store = await registry.getStore(session.spaceId)
 
       if (request.method === 'GET' && url.pathname === '/api/auth/session') {
         return json(response, 200, { authenticated: true, expiresAt: session.expiresAt }, corsHeaders)
@@ -134,10 +139,9 @@ function required(name) {
 export async function startApiFromEnvironment() {
   const port = Number(process.env.PORT || 8769)
   const host = process.env.HOST || '0.0.0.0'
+  const dataFile = process.env.DATA_FILE || './data/store.json'
   const server = await createApiServer({
-    dataFile: process.env.DATA_FILE || './data/store.json',
-    passwordSalt: required('AUTH_PASSWORD_SALT'),
-    passwordHash: required('AUTH_PASSWORD_HASH'),
+    dataDir: process.env.DATA_DIR || path.dirname(dataFile),
     sessionSecret: required('AUTH_SESSION_SECRET'),
     sessionTtlSeconds: Number(process.env.SESSION_TTL_SECONDS || 2_592_000)
   })

@@ -1,6 +1,7 @@
-import { createHmac, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHmac, timingSafeEqual } from 'node:crypto'
+import { isSpaceId } from './spaces.mjs'
 
-const TOKEN_VERSION = 1
+const TOKEN_VERSION = 2
 
 function safeEqual(left, right) {
   const leftBuffer = Buffer.from(left)
@@ -8,20 +9,13 @@ function safeEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer)
 }
 
-export function hashPassword(password, salt) {
-  return scryptSync(password, salt, 32).toString('hex')
-}
-
-export function verifyPassword(password, salt, expectedHash) {
-  if (typeof password !== 'string' || !password || !salt || !expectedHash) return false
-  return safeEqual(hashPassword(password, salt), expectedHash)
-}
-
-export function createSessionToken(secret, now = Date.now(), ttlSeconds = 30 * 24 * 60 * 60) {
+export function createSessionToken(secret, now = Date.now(), ttlSeconds = 30 * 24 * 60 * 60, spaceId) {
+  if (!isSpaceId(spaceId)) throw new Error('spaceId is required')
   const payload = Buffer.from(JSON.stringify({
     version: TOKEN_VERSION,
     issuedAt: now,
-    expiresAt: now + ttlSeconds * 1000
+    expiresAt: now + ttlSeconds * 1000,
+    spaceId
   })).toString('base64url')
   const signature = createHmac('sha256', secret).update(payload).digest('base64url')
   return `${payload}.${signature}`
@@ -41,7 +35,8 @@ export function verifySessionToken(token, secret, now = Date.now()) {
       parsed.version !== TOKEN_VERSION ||
       !Number.isFinite(parsed.issuedAt) ||
       !Number.isFinite(parsed.expiresAt) ||
-      parsed.expiresAt <= now
+      parsed.expiresAt <= now ||
+      !isSpaceId(parsed.spaceId)
     ) return null
     return parsed
   } catch {

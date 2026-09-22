@@ -3,6 +3,7 @@ import { Button, Image, Input, Text, View } from '@tarojs/components'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PRIORITY_META } from '@/constants/priorities'
 import BottomBar from '@/components/BottomBar'
+import CloudConnectSheet from '@/components/CloudConnectSheet'
 import ComposerSheet from '@/components/ComposerSheet'
 import DetailSheet from '@/components/DetailSheet'
 import IdeaSpaceCanvas from '@/components/IdeaSpaceCanvas'
@@ -17,6 +18,7 @@ import {
 } from '@/services/ideaHistory'
 import type { IdeaHistoryState } from '@/services/ideaHistory'
 import { getSyncStatus, scheduleSync, subscribeSyncData, subscribeSyncStatus } from '@/services/sync'
+import type { SyncStatus } from '@/services/sync'
 import { createId } from '@/utils/id'
 import { copyText } from '@/utils/clipboard'
 import { isToday } from '@/utils/date'
@@ -54,7 +56,9 @@ export default function IndexPage() {
   const [dragUi, setDragUi] = useState<{ active: boolean; hover: IdeaDropTarget | null }>({ active: false, hover: null })
   const [toast, setToast] = useState('')
   const [historyState, setHistoryState] = useState<IdeaHistoryState>(getIdeaHistoryState)
+  const [connectOpen, setConnectOpen] = useState(false)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const connectDismissedRef = useRef(false)
 
   useEffect(() => subscribeSyncData((nextIdeas, nextTags, nextProjects) => {
     setIdeas(nextIdeas)
@@ -97,6 +101,26 @@ export default function IndexPage() {
       }
       previous = next.phase
     })
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    let unsubscribe: (() => void) | null = null
+    const maybeOpen = (next: SyncStatus) => {
+      if (cancelled || connectDismissedRef.current) return
+      if (next.phase === 'signed-out' && !next.authenticated) setConnectOpen(true)
+      if (next.authenticated) setConnectOpen(false)
+    }
+    const timer = setTimeout(() => {
+      if (cancelled) return
+      maybeOpen(getSyncStatus())
+      unsubscribe = subscribeSyncStatus(maybeOpen)
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+      unsubscribe?.()
+    }
   }, [])
 
   useEffect(() => {
@@ -328,7 +352,7 @@ export default function IndexPage() {
     setSearchOpen(false)
   }
 
-  const hasSheetOpen = composerOpen || !!selectedId
+  const hasSheetOpen = composerOpen || !!selectedId || connectOpen
 
   return (
     <View className={`stage theme-root ${process.env.TARO_ENV === 'h5' ? 'platform-h5' : 'platform-mini'}`} style={themeStyle}>
@@ -484,6 +508,14 @@ export default function IndexPage() {
             onDelete={deleteSelected}
           />
         )}
+
+        <CloudConnectSheet
+          open={connectOpen}
+          onClose={() => {
+            if (!getSyncStatus().authenticated) connectDismissedRef.current = true
+            setConnectOpen(false)
+          }}
+        />
 
         <View className={`toast ${toast ? 'show' : ''}`}><Text>{toast}</Text></View>
       </View>

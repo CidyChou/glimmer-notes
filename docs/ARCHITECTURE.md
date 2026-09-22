@@ -26,8 +26,8 @@
 - `components/ComposerSheet`：快速记录
 - `components/DetailSheet`：详情、优先级、收藏、删除
 - `services/ideaStorage`：Taro Storage，本地优先与旧数据迁移
-- `services/sync`：单用户认证、同步队列、离线恢复与状态通知
-- `backend`：Node.js 同步 API、冲突合并与原子 JSON 持久化
+- `services/sync`：空间密钥认证、同步队列、离线恢复与状态通知
+- `backend`：Node.js 同步 API、按密钥隔离的空间存储、冲突合并与原子 JSON 持久化
 - `theme`：全局皮肤定义、CSS 变量映射、主题状态与持久化
 - `types/idea.ts`：数据模型
 - `constants/priorities.ts`：优先级定义
@@ -45,7 +45,8 @@
 - Idea 使用 `updatedAt` 表示最后修改时间；旧数据读取时回退到 `createdAt`。
 - 删除记录独立保存为墓碑 `{ id, deletedAt }`，时间相同时删除优先。
 - 客户端所有写入先落本地，再串行提交服务端；服务端不可用不阻塞编辑。
-- 单用户口令只用于换取有期限的签名令牌，服务端不保存口令明文。
+- 空间密钥用于打开或创建独立数据空间，并换取绑定该空间的有期限签名令牌；服务端按密钥哈希分文件存储，不保存密钥明文。
+- 旧版单文件 `store.json` 会在启动时复制到默认空间 `zdy`。
 - H5 API 地址由 `TARO_APP_API_BASE_URL` 在构建阶段注入。
 
 ## 后续扩展建议

@@ -61,6 +61,7 @@ up_backend: test_backend
 		HOST="0.0.0.0" \
 		PORT="$(BACKEND_PORT)" \
 		DATA_FILE="$(REMOTE_ROOT)/data/store.json" \
+		DATA_DIR="$(REMOTE_ROOT)/data" \
 		SESSION_TTL_SECONDS="2592000" \
 		node "$(REMOTE_ROOT)/backend/scripts/init-auth.mjs" "$(REMOTE_ROOT)/config/backend.env"; \
 		set -a; . "$(REMOTE_ROOT)/config/backend.env"; set +a; \

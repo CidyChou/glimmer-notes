@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { hashPassword } from '../lib/auth.mjs'
 
 const configPath = process.argv[2]
 if (!configPath) throw new Error('Usage: node init-auth.mjs <config-file>')
@@ -17,25 +16,15 @@ try {
   if (error?.code !== 'ENOENT') throw error
 }
 
-let initialPassword = ''
-if (!values.AUTH_PASSWORD_HASH || !values.AUTH_PASSWORD_SALT) {
-  initialPassword = randomBytes(18).toString('base64url')
-  values.AUTH_PASSWORD_SALT = randomBytes(16).toString('hex')
-  values.AUTH_PASSWORD_HASH = hashPassword(initialPassword, values.AUTH_PASSWORD_SALT)
-}
 if (!values.AUTH_SESSION_SECRET) values.AUTH_SESSION_SECRET = randomBytes(32).toString('hex')
 
 values.HOST = process.env.HOST || values.HOST || '0.0.0.0'
 values.PORT = process.env.PORT || values.PORT || '8769'
 values.DATA_FILE = process.env.DATA_FILE || values.DATA_FILE || './data/store.json'
+values.DATA_DIR = process.env.DATA_DIR || values.DATA_DIR || path.dirname(values.DATA_FILE)
 delete values.ALLOWED_ORIGINS
 values.SESSION_TTL_SECONDS = process.env.SESSION_TTL_SECONDS || values.SESSION_TTL_SECONDS || '2592000'
 
 await mkdir(path.dirname(configPath), { recursive: true })
 await writeFile(configPath, Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', { mode: 0o600 })
 await chmod(configPath, 0o600)
-
-if (initialPassword) {
-  console.log(`GLIMMER_INITIAL_PASSWORD=${initialPassword}`)
-  console.log('Save this password now. It will not be printed by later deployments.')
-}

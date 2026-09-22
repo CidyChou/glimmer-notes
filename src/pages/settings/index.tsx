@@ -2,9 +2,9 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Input, Text, View } from '@tarojs/components'
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
+import CloudConnectSheet from '@/components/CloudConnectSheet'
 import {
   getSyncStatus,
-  loginAndSync,
   logoutSync,
   resolveInitialSync,
   retrySync,
@@ -40,10 +40,6 @@ export default function SettingsPage() {
   const [notice, setNotice] = useState('')
   const [syncStatus, setSyncStatus] = useState(getSyncStatus)
   const [loginOpen, setLoginOpen] = useState(false)
-  const [password, setPassword] = useState('')
-  const [passwordVisible, setPasswordVisible] = useState(false)
-  const [loginError, setLoginError] = useState('')
-  const [loggingIn, setLoggingIn] = useState(false)
   const [resolvingConflict, setResolvingConflict] = useState(false)
   const [projects, setProjects] = useState<IdeaProject[]>(loadProjects)
   const [newProjectName, setNewProjectName] = useState('')
@@ -93,34 +89,7 @@ export default function SettingsPage() {
     setTimeout(() => setNotice(''), 1400)
   }
 
-  const openLogin = () => {
-    setLoginError('')
-    setPassword('')
-    setLoginOpen(true)
-  }
-
-  const closeLogin = () => {
-    if (loggingIn) return
-    setLoginOpen(false)
-    setLoginError('')
-  }
-
-  const submitLogin = async () => {
-    if (!password || loggingIn) return
-    setLoggingIn(true)
-    setLoginError('')
-    try {
-      const result = await loginAndSync(password)
-      setLoginOpen(false)
-      setPassword('')
-      setNotice(result === 'conflict' ? '请确认首次同步方式' : '云端同步已开启')
-      setTimeout(() => setNotice(''), 1800)
-    } catch (error) {
-      setLoginError(error instanceof Error ? error.message : '登录失败，请重试')
-    } finally {
-      setLoggingIn(false)
-    }
-  }
+  const openLogin = () => setLoginOpen(true)
 
   const handleRetry = async () => {
     if (syncStatus.phase === 'conflict') return
@@ -622,48 +591,14 @@ export default function SettingsPage() {
           </View>
         </View>
 
-        <View className={`login-scrim ${loginOpen ? 'show' : ''}`} onClick={closeLogin} />
-        <View className={`login-sheet ${loginOpen ? 'show' : ''}`}>
-          <View className='login-handle' />
-          <Text className='login-eyebrow'>PRIVATE SYNC</Text>
-          <Text className='login-title'>连接你的云端空间</Text>
-          <Text className='login-description'>输入首次部署时生成的访问口令。本地记录不会因为登录失败而丢失。</Text>
-
-          <View className='login-field'>
-            <Text className='login-label'>访问口令</Text>
-            <View className={`login-input-shell ${loginError ? 'has-error' : ''}`}>
-              <Input
-                className='login-input'
-                ariaLabel='访问口令'
-                value={password}
-                password={!passwordVisible}
-                focus={loginOpen}
-                placeholder='输入访问口令'
-                confirmType='done'
-                onInput={(event) => setPassword(event.detail.value)}
-                onConfirm={() => void submitLogin()}
-              />
-              <Button
-                className='password-toggle'
-                ariaLabel={passwordVisible ? '隐藏访问口令' : '显示访问口令'}
-                onClick={() => setPasswordVisible((visible) => !visible)}
-              >{passwordVisible ? '隐藏' : '显示'}</Button>
-            </View>
-            <View className={`login-error ${loginError ? 'show' : ''}`} ariaRole='alert'>
-              {loginError || ' '}
-            </View>
-          </View>
-
-          <View className='login-actions'>
-            <Button className='login-cancel' disabled={loggingIn} onClick={closeLogin}>稍后再说</Button>
-            <Button
-              className='login-submit'
-              disabled={!password || loggingIn}
-              loading={loggingIn}
-              onClick={() => void submitLogin()}
-            >连接并同步</Button>
-          </View>
-        </View>
+        <CloudConnectSheet
+          open={loginOpen}
+          onClose={() => setLoginOpen(false)}
+          onConnected={(result) => {
+            setNotice(result === 'conflict' ? '请确认首次同步方式' : '云端同步已开启')
+            setTimeout(() => setNotice(''), 1800)
+          }}
+        />
 
         <View className={`settings-toast ${notice ? 'show' : ''}`}>{notice}</View>
       </View>
