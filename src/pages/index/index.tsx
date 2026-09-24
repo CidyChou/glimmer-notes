@@ -363,7 +363,7 @@ export default function IndexPage() {
         <View className='topbar'>
           <View className='brand'>
             <Text className='eyebrow'>IDEA INBOX</Text>
-            <Text className='title'>光屿札记</Text>
+            <Text className='title'>拾光笔记</Text>
           </View>
           <View className='topbar-actions'>
             <View className='history-controls' ariaLabel='任务历史'>

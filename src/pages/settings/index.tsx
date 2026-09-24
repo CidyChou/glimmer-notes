@@ -264,7 +264,7 @@ export default function SettingsPage() {
           <View
             className='settings-back'
             ariaRole='button'
-            ariaLabel='返回光屿札记'
+            ariaLabel='返回拾光笔记'
             onClick={goBack}
           >
             <View className='back-glyph' />
@@ -584,7 +584,7 @@ export default function SettingsPage() {
             <View className='about-card'>
               <View className='about-mark'><View className='about-core' /></View>
               <View>
-                <Text className='about-title'>光屿札记</Text>
+                <Text className='about-title'>拾光笔记</Text>
                 <Text className='about-copy'>先捕捉，稍后整理。</Text>
               </View>
             </View>
