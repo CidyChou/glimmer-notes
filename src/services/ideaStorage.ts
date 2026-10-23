@@ -17,6 +17,69 @@ const V3_STORAGE_KEY = 'idea-space-v3-data'
 const TOMBSTONE_STORAGE_KEY = 'idea-space-v1-tombstones'
 const TAG_STORAGE_KEY = 'idea-space-v1-tags'
 const PROJECT_STORAGE_KEY = 'idea-space-v1-projects'
+const ACTIVE_SPACE_KEY = 'idea-space-sync-space-key-v1'
+const LEGACY_MIGRATED_KEY = 'idea-space-legacy-scope-migrated-v1'
+
+let storageScope = ''
+
+function scoped(base: string): string {
+  return storageScope ? `${base}::${storageScope}` : base
+}
+
+function ideaKey(): string { return scoped(STORAGE_KEY) }
+function tombstoneKey(): string { return scoped(TOMBSTONE_STORAGE_KEY) }
+function tagKey(): string { return scoped(TAG_STORAGE_KEY) }
+function projectKey(): string { return scoped(PROJECT_STORAGE_KEY) }
+
+function readStoredSpaceKey(): string {
+  try {
+    const value = Taro.getStorageSync(ACTIVE_SPACE_KEY) as unknown
+    return typeof value === 'string' ? value.normalize('NFC').trim() : ''
+  } catch {
+    return ''
+  }
+}
+
+function copyIfPresent(from: string, to: string) {
+  const value = Taro.getStorageSync(from) as unknown
+  if (value == null || value === '') return
+  Taro.setStorageSync(to, value)
+}
+
+function migrateUnscopedData(target: string) {
+  try {
+    if (Taro.getStorageSync(LEGACY_MIGRATED_KEY)) return
+    const scopedIdeas = `${STORAGE_KEY}::${target}`
+    const scopedExisting = Taro.getStorageSync(scopedIdeas) as unknown
+    const legacy = readUnscopedIdeas()
+    if (!Array.isArray(scopedExisting) && Array.isArray(legacy)) {
+      Taro.setStorageSync(scopedIdeas, legacy)
+      copyIfPresent(TOMBSTONE_STORAGE_KEY, `${TOMBSTONE_STORAGE_KEY}::${target}`)
+      copyIfPresent(TAG_STORAGE_KEY, `${TAG_STORAGE_KEY}::${target}`)
+      copyIfPresent(PROJECT_STORAGE_KEY, `${PROJECT_STORAGE_KEY}::${target}`)
+    }
+    Taro.setStorageSync(LEGACY_MIGRATED_KEY, target)
+  } catch (error) {
+    console.warn('[IdeaSpace] migrate space storage failed', error)
+  }
+}
+
+function readUnscopedIdeas(): unknown {
+  const current = Taro.getStorageSync(STORAGE_KEY) as unknown
+  if (Array.isArray(current)) return current
+  for (const key of [V6_STORAGE_KEY, V5_STORAGE_KEY, V4_STORAGE_KEY, V3_STORAGE_KEY]) {
+    const value = Taro.getStorageSync(key) as unknown
+    if (Array.isArray(value)) return value
+  }
+  return undefined
+}
+
+export function activateIdeaStorageScope(next: string) {
+  const normalized = next.normalize('NFC').trim()
+  if (normalized === storageScope) return
+  storageScope = normalized
+  if (normalized) migrateUnscopedData(normalized)
+}
 
 type StoredIdea = Omit<Idea, 'colorSlot' | 'updatedAt' | 'projectId' | 'tagIds' | 'archivedAt'> & {
   colorSlot?: unknown
@@ -131,10 +194,10 @@ function repairDemoSeedDuplicates(
   const collapsed = collapseDemoSeedDuplicates(ideas, tombstones)
   if (collapsed.removedIds.length === 0) return { ideas, tombstones }
   try {
-    Taro.setStorageSync(STORAGE_KEY, collapsed.ideas)
-    Taro.setStorageSync(TOMBSTONE_STORAGE_KEY, collapsed.tombstones)
-    Taro.setStorageSync(TAG_STORAGE_KEY, normalizeTags(tags))
-    Taro.setStorageSync(PROJECT_STORAGE_KEY, normalizeProjects(projects))
+    Taro.setStorageSync(ideaKey(), collapsed.ideas)
+    Taro.setStorageSync(tombstoneKey(), collapsed.tombstones)
+    Taro.setStorageSync(tagKey(), normalizeTags(tags))
+    Taro.setStorageSync(projectKey(), normalizeProjects(projects))
   } catch (error) {
     console.warn('[IdeaSpace] repair demo seed duplicates failed', error)
   }
@@ -143,7 +206,7 @@ function repairDemoSeedDuplicates(
 
 export function loadTags(): IdeaTag[] {
   try {
-    return normalizeTags(Taro.getStorageSync(TAG_STORAGE_KEY) as unknown)
+    return normalizeTags(Taro.getStorageSync(tagKey()) as unknown)
   } catch (error) {
     console.warn('[IdeaSpace] load tags failed', error)
     return []
@@ -152,7 +215,7 @@ export function loadTags(): IdeaTag[] {
 
 export function loadProjects(): IdeaProject[] {
   try {
-    return normalizeProjects(Taro.getStorageSync(PROJECT_STORAGE_KEY) as unknown)
+    return normalizeProjects(Taro.getStorageSync(projectKey()) as unknown)
   } catch (error) {
     console.warn('[IdeaSpace] load projects failed', error)
     return [DEFAULT_PROJECT]
@@ -167,7 +230,7 @@ function alignIdeasToProjects(ideas: Idea[], projects: IdeaProject[]): Idea[] {
 }
 
 function loadTombstones(): IdeaTombstone[] {
-  const stored = Taro.getStorageSync(TOMBSTONE_STORAGE_KEY) as unknown
+  const stored = Taro.getStorageSync(tombstoneKey()) as unknown
   if (!Array.isArray(stored)) return []
   return stored.flatMap((value) => {
     if (
@@ -183,12 +246,16 @@ export function loadIdeaState(): LocalIdeaState {
   try {
     const tags = loadTags()
     const projects = loadProjects()
-    const stored = Taro.getStorageSync(STORAGE_KEY) as StoredIdea[] | undefined
+    const stored = Taro.getStorageSync(ideaKey()) as StoredIdea[] | undefined
     if (Array.isArray(stored)) {
       const ideas = alignIdeasToProjects(stored.map(normalizeIdea), projects)
       const tombstones = loadTombstones()
       const repaired = repairDemoSeedDuplicates(ideas, tombstones, tags, projects)
       return { ideas: repaired.ideas, projects, tags, tombstones: repaired.tombstones, hasPersistedIdeas: true }
+    }
+
+    if (storageScope) {
+      return { ideas: seedIdeas(), projects, tags, tombstones: [], hasPersistedIdeas: false }
     }
 
     const v6 = Taro.getStorageSync(V6_STORAGE_KEY) as StoredIdea[] | undefined
@@ -200,10 +267,10 @@ export function loadIdeaState(): LocalIdeaState {
       const migrated = alignIdeasToProjects(legacy.map(normalizeIdea), projects)
       const tombstones = loadTombstones()
       const repaired = repairDemoSeedDuplicates(migrated, tombstones, tags, projects)
-      Taro.setStorageSync(STORAGE_KEY, repaired.ideas)
-      Taro.setStorageSync(TOMBSTONE_STORAGE_KEY, repaired.tombstones)
-      Taro.setStorageSync(TAG_STORAGE_KEY, tags)
-      Taro.setStorageSync(PROJECT_STORAGE_KEY, projects)
+      Taro.setStorageSync(ideaKey(), repaired.ideas)
+      Taro.setStorageSync(tombstoneKey(), repaired.tombstones)
+      Taro.setStorageSync(tagKey(), tags)
+      Taro.setStorageSync(projectKey(), projects)
       return { ideas: repaired.ideas, projects, tags, tombstones: repaired.tombstones, hasPersistedIdeas: true }
     }
   } catch (error) {
@@ -223,10 +290,10 @@ export function saveIdeaState(
   projects: IdeaProject[] = loadProjects()
 ): void {
   try {
-    Taro.setStorageSync(STORAGE_KEY, ideas)
-    Taro.setStorageSync(TOMBSTONE_STORAGE_KEY, tombstones)
-    Taro.setStorageSync(TAG_STORAGE_KEY, normalizeTags(tags))
-    Taro.setStorageSync(PROJECT_STORAGE_KEY, normalizeProjects(projects))
+    Taro.setStorageSync(ideaKey(), ideas)
+    Taro.setStorageSync(tombstoneKey(), tombstones)
+    Taro.setStorageSync(tagKey(), normalizeTags(tags))
+    Taro.setStorageSync(projectKey(), normalizeProjects(projects))
   } catch (error) {
     console.warn('[IdeaSpace] save storage failed', error)
   }
@@ -234,7 +301,7 @@ export function saveIdeaState(
 
 export function saveTags(tags: IdeaTag[]): void {
   try {
-    Taro.setStorageSync(TAG_STORAGE_KEY, normalizeTags(tags))
+    Taro.setStorageSync(tagKey(), normalizeTags(tags))
   } catch (error) {
     console.warn('[IdeaSpace] save tags failed', error)
   }
@@ -242,7 +309,7 @@ export function saveTags(tags: IdeaTag[]): void {
 
 export function saveProjects(projects: IdeaProject[]): void {
   try {
-    Taro.setStorageSync(PROJECT_STORAGE_KEY, normalizeProjects(projects))
+    Taro.setStorageSync(projectKey(), normalizeProjects(projects))
   } catch (error) {
     console.warn('[IdeaSpace] save projects failed', error)
   }
@@ -250,7 +317,7 @@ export function saveProjects(projects: IdeaProject[]): void {
 
 export function saveIdeas(ideas: Idea[]): void {
   try {
-    Taro.setStorageSync(STORAGE_KEY, ideas)
+    Taro.setStorageSync(ideaKey(), ideas)
   } catch (error) {
     console.warn('[IdeaSpace] save storage failed', error)
   }
@@ -263,7 +330,7 @@ export function recordIdeaDeletion(id: string, deletedAt: number): void {
     const next = existing
       ? tombstones.map((item) => item.id === id && deletedAt > item.deletedAt ? { id, deletedAt } : item)
       : [{ id, deletedAt }, ...tombstones]
-    Taro.setStorageSync(TOMBSTONE_STORAGE_KEY, next)
+    Taro.setStorageSync(tombstoneKey(), next)
   } catch (error) {
     console.warn('[IdeaSpace] save deletion marker failed', error)
   }
@@ -272,10 +339,12 @@ export function recordIdeaDeletion(id: string, deletedAt: number): void {
 export function removeIdeaDeletion(id: string): void {
   try {
     Taro.setStorageSync(
-      TOMBSTONE_STORAGE_KEY,
+      tombstoneKey(),
       loadTombstones().filter((item) => item.id !== id)
     )
   } catch (error) {
     console.warn('[IdeaSpace] remove deletion marker failed', error)
   }
 }
+
+activateIdeaStorageScope(readStoredSpaceKey())

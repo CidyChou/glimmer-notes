@@ -1,13 +1,16 @@
 import Taro from '@tarojs/taro'
 import { isDemoSeedId, isDemoSeedText, isDemoOnlyIdeaSet } from '@/constants/demoSeeds'
-import { DEFAULT_PROJECT, loadIdeaState, saveIdeaState } from '@/services/ideaStorage'
-import { reconcileIdeaHistory } from '@/services/ideaHistory'
+import { activateIdeaStorageScope, DEFAULT_PROJECT, loadIdeaState, saveIdeaState } from '@/services/ideaStorage'
+import { clearIdeaHistory, reconcileIdeaHistory } from '@/services/ideaHistory'
+import { normalizeSpaceKey, removeSavedSpace, upsertSavedSpace } from '@/services/savedSpaces'
+import type { SavedSpace } from '@/services/savedSpaces'
 import { mergeSyncStates } from '@/services/syncMerge'
 import { DEFAULT_PROJECT_ID, LEGACY_PROJECT_TAG_ID } from '@/types/idea'
 import type { Idea, IdeaProject, IdeaTag, IdeaTombstone } from '@/types/idea'
 
 const TOKEN_STORAGE_KEY = 'idea-space-sync-token-v1'
 const SPACE_KEY_STORAGE_KEY = 'idea-space-sync-space-key-v1'
+const SAVED_SPACES_KEY = 'idea-space-saved-spaces-v1'
 const AUTO_SYNC_STORAGE_KEY = 'idea-space-auto-sync-v1'
 const SYNC_INITIALIZED_STORAGE_KEY = 'idea-space-sync-initialized-v1'
 const API_BASE_URL = __API_BASE_URL__.replace(/\/$/, '')
@@ -63,6 +66,7 @@ class ApiError extends Error {
 
 type StatusListener = (status: SyncStatus) => void
 type DataListener = (ideas: Idea[], tags: IdeaTag[], projects: IdeaProject[]) => void
+type SpaceListener = (spaces: SavedSpace[]) => void
 
 function loadToken(): string {
   try {
@@ -93,9 +97,32 @@ function loadSyncInitialized(existingToken: string): boolean {
 function loadSpaceKey(): string {
   try {
     const value = Taro.getStorageSync(SPACE_KEY_STORAGE_KEY) as unknown
-    return typeof value === 'string' ? value : ''
+    return typeof value === 'string' ? normalizeSpaceKey(value) : ''
   } catch {
     return ''
+  }
+}
+
+function loadSavedSpaces(): SavedSpace[] {
+  try {
+    const value = Taro.getStorageSync(SAVED_SPACES_KEY) as unknown
+    if (!Array.isArray(value)) return []
+    const spaces: SavedSpace[] = []
+    for (const item of value) {
+      if (!item || typeof item !== 'object') continue
+      const record = item as Partial<SavedSpace>
+      const key = typeof record.key === 'string' ? normalizeSpaceKey(record.key) : ''
+      if (!key || key.length > 64 || spaces.some((space) => space.key === key)) continue
+      spaces.push({
+        key,
+        token: typeof record.token === 'string' ? record.token : '',
+        initialized: record.initialized === true,
+        lastUsedAt: typeof record.lastUsedAt === 'number' ? record.lastUsedAt : 0
+      })
+    }
+    return spaces.sort((left, right) => right.lastUsedAt - left.lastUsedAt || left.key.localeCompare(right.key))
+  } catch {
+    return []
   }
 }
 
@@ -109,8 +136,25 @@ function connectedDetail() {
 
 let token = loadToken()
 let spaceKey = loadSpaceKey()
+let savedSpaces = loadSavedSpaces()
 let autoSyncEnabled = loadAutoSyncEnabled()
 let syncInitialized = loadSyncInitialized(token)
+if (spaceKey && token) {
+  const seeded = upsertSavedSpace(savedSpaces, {
+    key: spaceKey,
+    token,
+    initialized: syncInitialized,
+    lastUsedAt: Date.now()
+  })
+  if (!seeded.error) {
+    savedSpaces = seeded.spaces
+    try {
+      Taro.setStorageSync(SAVED_SPACES_KEY, savedSpaces)
+    } catch (error) {
+      console.warn('[IdeaSpace] save space list failed', error)
+    }
+  }
+}
 let status: SyncStatus = {
   phase: token ? 'offline' : 'signed-out',
   authenticated: Boolean(token),
@@ -124,6 +168,9 @@ let status: SyncStatus = {
 }
 const statusListeners = new Set<StatusListener>()
 const dataListeners = new Set<DataListener>()
+const spaceListeners = new Set<SpaceListener>()
+let spaceLock: Promise<void> | null = null
+let spaceLockDepth = 0
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 let syncPromise: Promise<void> | null = null
 let initializePromise: Promise<void> | null = null
@@ -136,9 +183,10 @@ function updateStatus(next: Partial<SyncStatus>) {
 }
 
 function storeSpaceKey(next: string) {
-  spaceKey = next
+  spaceKey = normalizeSpaceKey(next)
+  activateIdeaStorageScope(spaceKey)
   try {
-    if (next) Taro.setStorageSync(SPACE_KEY_STORAGE_KEY, next)
+    if (spaceKey) Taro.setStorageSync(SPACE_KEY_STORAGE_KEY, spaceKey)
     else Taro.removeStorageSync(SPACE_KEY_STORAGE_KEY)
   } catch (error) {
     console.warn('[IdeaSpace] save space key failed', error)
@@ -153,13 +201,56 @@ function storeToken(next: string, initialized = syncInitialized) {
       Taro.setStorageSync(TOKEN_STORAGE_KEY, next)
       Taro.setStorageSync(SYNC_INITIALIZED_STORAGE_KEY, syncInitialized)
     } else {
-      spaceKey = ''
       Taro.removeStorageSync(TOKEN_STORAGE_KEY)
       Taro.removeStorageSync(SYNC_INITIALIZED_STORAGE_KEY)
-      Taro.removeStorageSync(SPACE_KEY_STORAGE_KEY)
     }
   } catch (error) {
     console.warn('[IdeaSpace] save sync session failed', error)
+  }
+}
+
+function persistSpaces(next: SavedSpace[]) {
+  savedSpaces = next
+  try {
+    Taro.setStorageSync(SAVED_SPACES_KEY, next)
+  } catch (error) {
+    console.warn('[IdeaSpace] save space list failed', error)
+  }
+  spaceListeners.forEach((listener) => listener(savedSpaces))
+}
+
+function rememberSpace(key: string, nextToken: string, initialized: boolean) {
+  const result = upsertSavedSpace(savedSpaces, {
+    key,
+    token: nextToken,
+    initialized,
+    lastUsedAt: Date.now()
+  })
+  if (result.error) throw new Error(result.error)
+  persistSpaces(result.spaces)
+}
+
+function invalidateSavedToken(key: string) {
+  if (!key) return
+  persistSpaces(savedSpaces.map((item) => item.key === key ? { ...item, token: '', initialized: false } : item))
+}
+
+function publishLocalState() {
+  const state = loadIdeaState()
+  dataListeners.forEach((listener) => listener(state.ideas, state.tags, state.projects))
+}
+
+async function withSpaceLock<T>(fn: () => Promise<T>): Promise<T> {
+  if (spaceLockDepth > 0) return fn()
+  while (spaceLock) await spaceLock.catch(() => undefined)
+  spaceLockDepth += 1
+  const run = fn()
+  spaceLock = run.then(() => undefined, () => undefined)
+  try {
+    return await run
+  } finally {
+    spaceLockDepth -= 1
+    spaceLock = null
   }
 }
 
@@ -169,6 +260,13 @@ function markSyncInitialized() {
     Taro.setStorageSync(SYNC_INITIALIZED_STORAGE_KEY, true)
   } catch (error) {
     console.warn('[IdeaSpace] save sync initialization failed', error)
+  }
+  if (spaceKey && token) {
+    try {
+      rememberSpace(spaceKey, token, true)
+    } catch (error) {
+      console.warn('[IdeaSpace] remember initialized space failed', error)
+    }
   }
 }
 
@@ -358,7 +456,7 @@ async function inspectInitialSync(): Promise<void> {
 
 async function runSync(initial = false): Promise<void> {
   if (!token) {
-    updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: signedOutDetail() })
+    updateStatus({ phase: 'signed-out', authenticated: false, spaceKey, detail: signedOutDetail() })
     return
   }
   if (syncPromise) {
@@ -380,8 +478,9 @@ async function runSync(initial = false): Promise<void> {
     await syncPromise
   } catch (error) {
     if (error instanceof ApiError && error.statusCode === 401) {
+      invalidateSavedToken(spaceKey)
       storeToken('')
-      updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: '登录已过期，请重新连接' })
+      updateStatus({ phase: 'signed-out', authenticated: false, spaceKey, detail: '登录已过期，请重新连接' })
     } else {
       console.warn('[IdeaSpace] cloud sync failed', error)
       updateStatus({
@@ -422,7 +521,7 @@ export function scheduleSync(): void {
 
 export async function initializeSync(): Promise<void> {
   if (!token) {
-    updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: signedOutDetail() })
+    updateStatus({ phase: 'signed-out', authenticated: false, spaceKey, detail: signedOutDetail() })
     return
   }
   if (initializePromise) return initializePromise
@@ -442,8 +541,9 @@ export async function initializeSync(): Promise<void> {
     await initializePromise
   } catch (error) {
     if (error instanceof ApiError && error.statusCode === 401) {
+      invalidateSavedToken(spaceKey)
       storeToken('')
-      updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: '登录已过期，请重新连接' })
+      updateStatus({ phase: 'signed-out', authenticated: false, spaceKey, detail: '登录已过期，请重新连接' })
     } else {
       updateStatus({ phase: 'offline', authenticated: Boolean(token), spaceKey, detail: '云端暂时不可用，本地数据已保存' })
     }
@@ -452,27 +552,141 @@ export async function initializeSync(): Promise<void> {
   }
 }
 
-export async function loginAndSync(key: string): Promise<'synced' | 'conflict'> {
-  const nextKey = key.trim()
-  updateStatus({ phase: 'syncing', authenticated: false, detail: '正在连接云端空间…' })
+async function flushCurrentSpace() {
+  if (syncTimer) {
+    clearTimeout(syncTimer)
+    syncTimer = null
+  }
+  if (!token || !spaceKey || !autoSyncEnabled || status.phase === 'conflict' || status.phase === 'signed-out') return
+  try {
+    await runSync()
+  } catch {
+    // Keep the current space's local cache. Switching must not upload it elsewhere.
+  }
+}
+
+async function settleInitialSync() {
+  if (initializePromise) await initializePromise.catch(() => undefined)
+}
+
+async function connectSpace(key: string): Promise<'synced' | 'conflict'> {
+  const nextKey = normalizeSpaceKey(key)
+  if (!nextKey || nextKey.length > 64) throw new Error('密钥需要 1 到 64 个字符')
+  await settleInitialSync()
+  if (nextKey === spaceKey && token) {
+    rememberSpace(nextKey, token, syncInitialized)
+    return status.phase === 'conflict' ? 'conflict' : 'synced'
+  }
+  const gate = upsertSavedSpace(savedSpaces, {
+    key: nextKey,
+    token: '',
+    initialized: false,
+    lastUsedAt: Date.now()
+  })
+  if (gate.error) throw new Error(gate.error)
+
+  const previousKey = spaceKey
+  await flushCurrentSpace()
+  if (token && spaceKey && spaceKey !== nextKey) rememberSpace(spaceKey, token, syncInitialized)
+
+  updateStatus({ phase: 'syncing', authenticated: false, spaceKey: previousKey, detail: '正在连接云端空间…' })
   try {
     const result = await request<{ token: string; expiresAt: number; spaceKey?: string }>('/api/auth/login', 'POST', { key: nextKey })
-    storeToken(result.token, false)
-    storeSpaceKey(result.spaceKey || nextKey)
-    await inspectInitialSync()
+    const resolvedKey = normalizeSpaceKey(result.spaceKey || nextKey)
+    const sameSpace = resolvedKey === previousKey
+    pendingRemoteState = null
+    storeSpaceKey(resolvedKey)
+    clearIdeaHistory()
+    storeToken(result.token, sameSpace ? syncInitialized : false)
+    rememberSpace(resolvedKey, result.token, sameSpace ? syncInitialized : false)
+    publishLocalState()
+    if (sameSpace && syncInitialized) await runSync()
+    else await inspectInitialSync()
+    if (token) rememberSpace(resolvedKey, token, syncInitialized)
     return status.phase === 'conflict' ? 'conflict' : 'synced'
   } catch (error) {
-    if (!token) updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', detail: signedOutDetail() })
+    if (!token) updateStatus({ phase: 'signed-out', authenticated: false, spaceKey, detail: signedOutDetail() })
     if (error instanceof ApiError && error.statusCode === 400) throw new Error('密钥需要 1 到 64 个字符')
     if (error instanceof ApiError && error.statusCode === 429) throw new Error('尝试次数过多，请稍后再试')
     throw new Error(connectionErrorMessage(error))
   }
 }
 
-export function logoutSync(): void {
+export async function loginAndSync(key: string): Promise<'synced' | 'conflict'> {
+  return withSpaceLock(() => connectSpace(key))
+}
+
+export function getSavedSpaces(): SavedSpace[] {
+  return savedSpaces
+}
+
+export function subscribeSavedSpaces(listener: SpaceListener): () => void {
+  spaceListeners.add(listener)
+  listener(savedSpaces)
+  return () => spaceListeners.delete(listener)
+}
+
+export async function switchSpace(key: string): Promise<'synced' | 'conflict'> {
+  return withSpaceLock(async () => {
+    const nextKey = normalizeSpaceKey(key)
+    if (!nextKey || nextKey.length > 64) throw new Error('密钥需要 1 到 64 个字符')
+    await settleInitialSync()
+    if (nextKey === spaceKey && token) {
+      rememberSpace(nextKey, token, syncInitialized)
+      return status.phase === 'conflict' ? 'conflict' : 'synced'
+    }
+    const saved = savedSpaces.find((item) => item.key === nextKey)
+    if (!saved?.token) return connectSpace(nextKey)
+
+    await flushCurrentSpace()
+    if (token && spaceKey && spaceKey !== nextKey) rememberSpace(spaceKey, token, syncInitialized)
+    pendingRemoteState = null
+    storeSpaceKey(nextKey)
+    clearIdeaHistory()
+    storeToken(saved.token, saved.initialized)
+    rememberSpace(nextKey, saved.token, saved.initialized)
+    publishLocalState()
+    await initializeSync()
+    if (!token) return connectSpace(nextKey)
+    rememberSpace(nextKey, token, syncInitialized)
+    return status.phase === 'conflict' ? 'conflict' : 'synced'
+  })
+}
+
+export function forgetSpace(key: string): void {
+  const nextKey = normalizeSpaceKey(key)
+  persistSpaces(removeSavedSpace(savedSpaces, nextKey))
+  if (nextKey !== spaceKey) return
   pendingRemoteState = null
   storeToken('')
-  updateStatus({ phase: 'signed-out', authenticated: false, spaceKey: '', conflict: null, detail: '已退出云端同步', lastSyncedAt: null })
+  updateStatus({
+    phase: 'signed-out',
+    authenticated: false,
+    spaceKey,
+    conflict: null,
+    detail: '已从切换列表移除，云端数据还在'
+  })
+}
+
+export function logoutSync(): void {
+  pendingRemoteState = null
+  if (spaceKey && token) {
+    try {
+      rememberSpace(spaceKey, token, syncInitialized)
+    } catch (error) {
+      console.warn('[IdeaSpace] remember space before logout failed', error)
+    }
+  }
+  storeToken('')
+  clearIdeaHistory()
+  updateStatus({
+    phase: 'signed-out',
+    authenticated: false,
+    spaceKey,
+    conflict: null,
+    detail: '已退出云端同步，本地数据保留',
+    lastSyncedAt: null
+  })
 }
 
 export async function retrySync(): Promise<void> {

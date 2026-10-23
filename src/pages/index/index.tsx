@@ -17,8 +17,9 @@ import {
   undoIdeaChange
 } from '@/services/ideaHistory'
 import type { IdeaHistoryState } from '@/services/ideaHistory'
-import { getSyncStatus, scheduleSync, subscribeSyncData, subscribeSyncStatus } from '@/services/sync'
+import { forgetSpace, getSavedSpaces, getSyncStatus, scheduleSync, subscribeSavedSpaces, subscribeSyncData, subscribeSyncStatus, switchSpace } from '@/services/sync'
 import type { SyncStatus } from '@/services/sync'
+import { MAX_SAVED_SPACES } from '@/services/savedSpaces'
 import { createId } from '@/utils/id'
 import { copyText } from '@/utils/clipboard'
 import { isToday } from '@/utils/date'
@@ -57,6 +58,11 @@ export default function IndexPage() {
   const [toast, setToast] = useState('')
   const [historyState, setHistoryState] = useState<IdeaHistoryState>(getIdeaHistoryState)
   const [connectOpen, setConnectOpen] = useState(false)
+  const [syncStatus, setSyncStatus] = useState(getSyncStatus)
+  const [savedSpaces, setSavedSpaces] = useState(getSavedSpaces)
+  const [spaceMenuOpen, setSpaceMenuOpen] = useState(false)
+  const [switchingKey, setSwitchingKey] = useState('')
+  const [pendingRemove, setPendingRemove] = useState('')
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const connectDismissedRef = useRef(false)
 
@@ -92,9 +98,12 @@ export default function IndexPage() {
     setProjects(nextState.projects)
   })
 
+  useEffect(() => subscribeSavedSpaces(setSavedSpaces), [])
+
   useEffect(() => {
     let previous = getSyncStatus().phase
     return subscribeSyncStatus((next) => {
+      setSyncStatus(next)
       if ((next.phase === 'error' || next.phase === 'offline') && next.phase !== previous) {
         setToast('云端暂时不可用，本地已保存')
         setTimeout(() => setToast(''), 1800)
@@ -108,7 +117,10 @@ export default function IndexPage() {
     let unsubscribe: (() => void) | null = null
     const maybeOpen = (next: SyncStatus) => {
       if (cancelled || connectDismissedRef.current) return
-      if (next.phase === 'signed-out' && !next.authenticated) setConnectOpen(true)
+      if (next.phase === 'signed-out' && !next.authenticated) {
+        if (getSavedSpaces().length > 0) setSpaceMenuOpen(true)
+        else setConnectOpen(true)
+      }
       if (next.authenticated) setConnectOpen(false)
     }
     const timer = setTimeout(() => {
@@ -354,6 +366,38 @@ export default function IndexPage() {
 
   const hasSheetOpen = composerOpen || !!selectedId || connectOpen
 
+  const closeSpaceMenu = () => {
+    if (!getSyncStatus().authenticated) connectDismissedRef.current = true
+    setPendingRemove('')
+    setSpaceMenuOpen(false)
+  }
+
+  const pickSpace = async (key: string) => {
+    if (switchingKey) return
+    setSwitchingKey(key)
+    try {
+      const result = await switchSpace(key)
+      setSpaceMenuOpen(false)
+      setPendingRemove('')
+      flash(result === 'conflict' ? '请到设置里选择同步方式' : `已切换到 ${key}`)
+    } catch (error) {
+      flash(error instanceof Error ? error.message : '切换失败')
+    } finally {
+      setSwitchingKey('')
+    }
+  }
+
+  const addSpace = () => {
+    if (savedSpaces.length >= MAX_SAVED_SPACES) {
+      flash('最多保存 10 个仓库，请先移除一个')
+      return
+    }
+    setSpaceMenuOpen(false)
+    setPendingRemove('')
+    connectDismissedRef.current = true
+    setConnectOpen(true)
+  }
+
   return (
     <View className={`stage theme-root ${process.env.TARO_ENV === 'h5' ? 'platform-h5' : 'platform-mini'}`} style={themeStyle}>
       <View className={`phone-shell mode-${mode}`}>
@@ -362,7 +406,18 @@ export default function IndexPage() {
 
         <View className='topbar'>
           <View className='brand'>
-            <Text className='eyebrow'>IDEA INBOX</Text>
+            <View
+              className='space-switch'
+              ariaRole='button'
+              ariaLabel={syncStatus.spaceKey ? `当前仓库 ${syncStatus.spaceKey}，点击切换` : '选择云端仓库'}
+              onClick={() => {
+                setPendingRemove('')
+                setSpaceMenuOpen((open) => !open)
+              }}
+            >
+              <Text className='space-switch-label'>{syncStatus.spaceKey || '选择仓库'}</Text>
+              <View className='space-switch-caret' />
+            </View>
             <Text className='title'>拾光笔记</Text>
           </View>
           <View className='topbar-actions'>
@@ -509,11 +564,68 @@ export default function IndexPage() {
           />
         )}
 
+        <View className={`space-menu-scrim ${spaceMenuOpen ? 'show' : ''}`} onClick={closeSpaceMenu} />
+        <View className={`space-menu ${spaceMenuOpen ? 'show' : ''}`}>
+          <Text className='space-menu-title'>云端仓库</Text>
+          <Text className='space-menu-copy'>点一下切换。名字不同就是独立数据，最多 {MAX_SAVED_SPACES} 个。</Text>
+          {savedSpaces.length === 0 ? (
+            <Text className='space-menu-empty'>还没有保存的仓库</Text>
+          ) : savedSpaces.map((space) => {
+            const active = space.key === syncStatus.spaceKey
+            return (
+              <View key={space.key} className={`space-menu-item ${active ? 'active' : ''}`}>
+                <View
+                  className='space-menu-main'
+                  ariaRole='button'
+                  ariaLabel={active ? `当前仓库 ${space.key}` : `切换到 ${space.key}`}
+                  onClick={() => void pickSpace(space.key)}
+                >
+                  <Text className='space-menu-key'>{space.key}</Text>
+                  <Text className='space-menu-state'>
+                    {switchingKey === space.key ? '切换中' : active && syncStatus.authenticated ? '当前' : '切换'}
+                  </Text>
+                </View>
+                {pendingRemove === space.key ? (
+                  <View
+                    className='space-menu-remove confirm'
+                    ariaRole='button'
+                    ariaLabel={`确认移除 ${space.key}`}
+                    onClick={() => {
+                      forgetSpace(space.key)
+                      setPendingRemove('')
+                      flash(`已移除 ${space.key}`)
+                    }}
+                  >确认</View>
+                ) : (
+                  <View
+                    className='space-menu-remove'
+                    ariaRole='button'
+                    ariaLabel={`移除 ${space.key}`}
+                    onClick={() => setPendingRemove(space.key)}
+                  >移除</View>
+                )}
+              </View>
+            )
+          })}
+          <View
+            className={`space-menu-add ${switchingKey ? 'disabled' : ''}`}
+            ariaRole='button'
+            ariaLabel='添加仓库'
+            onClick={(event) => {
+              event.stopPropagation?.()
+              if (!switchingKey) addSpace()
+            }}
+          >添加仓库</View>
+        </View>
+
         <CloudConnectSheet
           open={connectOpen}
           onClose={() => {
             if (!getSyncStatus().authenticated) connectDismissedRef.current = true
             setConnectOpen(false)
+          }}
+          onConnected={(result) => {
+            flash(result === 'conflict' ? '请到设置里选择同步方式' : '仓库已连接')
           }}
         />
 

@@ -50,19 +50,19 @@ export default function CloudConnectSheet({ open, onClose, onConnected }: Props)
         <Text className='cloud-connect-eyebrow'>CLOUD SPACE</Text>
         <Text className='cloud-connect-title'>连接你的云端空间</Text>
         <Text className='cloud-connect-description'>
-          输入空间密钥即可连接。可以自定义任意名字，只要不和已有密钥重复，就会得到一份独立数据。
+          输入仓库密钥即可连接。名字不重复就是一份独立数据，例如 zdy 或 peiqi。首页可以随时切换，最多 10 个。
         </Text>
 
         <View className='cloud-connect-field'>
-          <Text className='cloud-connect-label'>空间密钥</Text>
+          <Text className='cloud-connect-label'>仓库密钥</Text>
           <View className={`cloud-connect-input-shell ${error ? 'has-error' : ''}`}>
             <Input
               className='cloud-connect-input'
-              ariaLabel='空间密钥'
+              ariaLabel='仓库密钥'
               value={key}
               password={!keyVisible}
               focus={open}
-              placeholder='例如 zdy'
+              placeholder='例如 zdy、peiqi'
               confirmType='done'
               maxlength={64}
               onInput={(event) => setKey(event.detail.value)}
@@ -70,7 +70,7 @@ export default function CloudConnectSheet({ open, onClose, onConnected }: Props)
             />
             <Button
               className='cloud-connect-toggle'
-              ariaLabel={keyVisible ? '隐藏空间密钥' : '显示空间密钥'}
+              ariaLabel={keyVisible ? '隐藏仓库密钥' : '显示仓库密钥'}
               onClick={() => setKeyVisible((visible) => !visible)}
             >{keyVisible ? '隐藏' : '显示'}</Button>
           </View>
