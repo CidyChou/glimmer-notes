@@ -3,7 +3,7 @@ import { access, chmod, copyFile, mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { JsonSyncStore } from './store.mjs'
 
-export const DEFAULT_SPACE_KEY = 'zdy'
+const LEGACY_SPACE_ID = 'a9b14c3aed87f01b4b7ee11be858476e3a437c278156965c9dc67cdca4b9195d'
 export const MAX_SPACE_KEY_LENGTH = 64
 
 export function normalizeSpaceKey(value) {
@@ -23,10 +23,10 @@ export function isSpaceId(value) {
   return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
 }
 
-export async function migrateLegacyStore(dataDir, defaultKey = DEFAULT_SPACE_KEY) {
+export async function migrateLegacyStore(dataDir, defaultKey) {
   const legacyFile = path.join(dataDir, 'store.json')
   const spacesDir = path.join(dataDir, 'spaces')
-  const dest = path.join(spacesDir, `${spaceIdForKey(defaultKey)}.json`)
+  const dest = path.join(spacesDir, `${defaultKey === undefined ? LEGACY_SPACE_ID : spaceIdForKey(defaultKey)}.json`)
   try {
     await access(legacyFile)
   } catch {

@@ -50,7 +50,7 @@ export default function CloudConnectSheet({ open, onClose, onConnected }: Props)
         <Text className='cloud-connect-eyebrow'>CLOUD SPACE</Text>
         <Text className='cloud-connect-title'>连接你的云端空间</Text>
         <Text className='cloud-connect-description'>
-          输入仓库密钥即可连接。名字不重复就是一份独立数据，例如 zdy 或 peiqi。首页可以随时切换，最多 10 个。
+          输入仓库密钥即可连接。不同密钥对应独立数据。首页可以随时切换，最多 10 个。
         </Text>
 
         <View className='cloud-connect-field'>
@@ -62,7 +62,7 @@ export default function CloudConnectSheet({ open, onClose, onConnected }: Props)
               value={key}
               password={!keyVisible}
               focus={open}
-              placeholder='例如 zdy、peiqi'
+              placeholder='请输入仓库密钥'
               confirmType='done'
               maxlength={64}
               onInput={(event) => setKey(event.detail.value)}

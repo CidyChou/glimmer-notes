@@ -5,7 +5,9 @@ PUBLIC_HOST ?= 106.55.78.71
 REMOTE_ROOT ?= /data/work/server/glimmer-notes
 BACKEND_PORT ?= 8769
 CLIENT_PORT ?= 8770
-API_BASE_URL ?= http://$(PUBLIC_HOST):$(BACKEND_PORT)
+API_BASE_URL ?= https://api.cidychou.com
+WECHAT_DEVTOOLS_CLI ?= /Applications/wechatwebdevtools.app/Contents/MacOS/cli
+WECHAT_DEVTOOLS_SYNC ?= auto
 DEV_LAN_HOST ?= 192.168.112.146
 SSH_OPTS ?= -o BatchMode=yes -o ConnectTimeout=10
 SSH_BIN ?= /usr/bin/ssh
@@ -19,12 +21,17 @@ dev:
 wechat:
 	npm run typecheck
 	TARO_APP_API_BASE_URL="$(API_BASE_URL)" npm run build:weapp
-	rm -rf dist-wechat
 	mkdir -p dist-wechat
-	cp -R dist/. dist-wechat/
-	node -e 'const fs = require("fs"); const config = JSON.parse(fs.readFileSync("project.config.json", "utf8")); config.miniprogramRoot = "./"; fs.writeFileSync("dist-wechat/project.config.json", JSON.stringify(config, null, 2) + "\n");'
+	rsync -a --delete --exclude='/project.config.json' --exclude='/project.private.config.json' dist/ dist-wechat/
+	node scripts/export-wechat-config.mjs
 	@echo "WeChat project exported: $(CURDIR)/dist-wechat"
-	@echo "Import this folder directly in WeChat DevTools."
+	@if [[ "$(WECHAT_DEVTOOLS_SYNC)" == 0 || "$(WECHAT_DEVTOOLS_SYNC)" == false ]]; then \
+		echo "已跳过自动打开微信开发者工具。"; \
+	elif [[ ! -x "$(WECHAT_DEVTOOLS_CLI)" ]]; then \
+		echo "未找到微信开发者工具 CLI，请手动打开 $(CURDIR)/dist-wechat。"; \
+	elif ! "$(WECHAT_DEVTOOLS_CLI)" open --project "$(CURDIR)/dist-wechat" </dev/null; then \
+		echo "自动打开失败。请检查微信开发者工具「设置 → 安全设置 → 服务端口」，或手动打开项目。"; \
+	fi
 
 build_client:
 	npm ci

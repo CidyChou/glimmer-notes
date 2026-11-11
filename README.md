@@ -66,6 +66,9 @@ npm run dev:weapp
 
 首次真机开发时，把 `project.config.json` 的 `appid` 从 `touristappid` 替换成你自己的小程序 AppID。
 
+在微信公众平台的开发设置中，将 `https://api.cidychou.com` 添加到 `request` 合法域名。执行 `make wechat` 会将小程序导出到 `dist-wechat/`，并用微信开发者工具打开该目录。执行 `make wechat WECHAT_DEVTOOLS_SYNC=0` 可以只导出。
+首次导出时可以用 `WECHAT_APP_ID=你的AppID make wechat` 指定 AppID，后续导出会保留已配置的 AppID。
+
 ### H5
 
 ```bash
@@ -82,7 +85,7 @@ npm run dev:tt
 
 客户端始终先写入本地存储。用空间密钥连接云端后，新增、编辑、归类和删除会自动同步；断网期间仍可正常使用，恢复连接后按照每条 Idea 的更新时间合并。删除通过墓碑记录传播，避免离线设备恢复已删除内容。
 
-任意不重复的密钥都会得到一份独立空间。现有 106 数据对应密钥 `zdy`。
+不同的密钥对应独立空间。
 
 本地开发后端：
 
@@ -93,19 +96,13 @@ npm run test:backend
 node backend/main.mjs
 ```
 
-H5 默认连接 106 服务器的 `http://106.55.78.71:8769`，本地执行 `npm run dev:h5` 时也使用这套云端数据。后端当前不限制网页来源；仅在需要临时切换后端时，才通过构建时变量 `TARO_APP_API_BASE_URL` 覆盖。
+H5 的访问地址是 `https://notes.cidychou.com`。微信小程序和 H5 默认请求 `https://api.cidychou.com` 上的笔记接口。本地开发时可用 `TARO_APP_API_BASE_URL` 覆盖接口地址，通过 Makefile 打包时可用 `API_BASE_URL` 覆盖。
 
-## 部署到 106 服务器
+## SG 服务器
 
-部署使用 SSH 别名 `tc`，远端目录为 `/data/work/server/glimmer-notes`：
+SSH 别名为 `sg`。Nginx 从 `/srv/glimmer-notes/client` 提供 H5，并将 API 域名上的 `/api/auth/login`、`/api/auth/session` 和 `/api/sync` 转发到本机的 `glimmer-notes.service`。后端代码在 `/srv/glimmer-notes/backend`，配置在 `/etc/glimmer-notes/backend.env`，数据在 `/var/lib/glimmer-notes`。
 
-```bash
-make up_client   # H5 -> 106.55.78.71:8770
-make up_backend  # API -> 106.55.78.71:8769
-make up_106      # 依次部署后端和客户端
-```
-
-当前两个端口使用 HTTP 公网访问，后端允许任意网页来源调用，但同步接口仍需要空间密钥换取的登录令牌。知道密钥的人可以读写对应空间，正式存放敏感内容前应配置 HTTPS 域名，并通过 `API_BASE_URL` 切换地址。
+Makefile 中的 `up_client`、`up_backend` 和 `up_106` 是旧 106 部署入口。
 
 ## 注意
 

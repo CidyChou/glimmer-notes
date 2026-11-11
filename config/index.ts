@@ -20,7 +20,7 @@ export default defineConfig<'webpack5'>(async (merge, { command }) => {
     outputRoot: 'dist',
     plugins: [],
     defineConstants: {
-      __API_BASE_URL__: JSON.stringify(process.env.TARO_APP_API_BASE_URL || 'http://106.55.78.71:8769')
+      __API_BASE_URL__: JSON.stringify(process.env.TARO_APP_API_BASE_URL || 'https://api.cidychou.com')
     },
     copy: {
       patterns: [],
@@ -52,6 +52,9 @@ export default defineConfig<'webpack5'>(async (merge, { command }) => {
     h5: {
       publicPath: '/',
       staticDirectory: 'static',
+      htmlPluginOption: {
+        favicon: path.resolve(__dirname, '..', 'src', 'assets', 'icons', 'favicon.png')
+      },
       postcss: {
         pxtransform: {
           enable: true,

@@ -8,7 +8,7 @@ import { JsonSyncStore, mergeStates } from '../lib/store.mjs'
 import { migrateLegacyStore, spaceIdForKey } from '../lib/spaces.mjs'
 import { createApiServer } from '../server.mjs'
 
-const TEST_SPACE_ID = spaceIdForKey('zdy')
+const TEST_SPACE_ID = spaceIdForKey('sample-space')
 
 function idea(overrides = {}) {
   return {
@@ -174,12 +174,12 @@ test('HTTP API opens a space by key, allows all origins, validates and syncs', a
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: 'http://unlisted-client.example' },
-      body: JSON.stringify({ key: 'zdy' })
+      body: JSON.stringify({ key: 'sample-space' })
     })
     assert.equal(login.status, 200)
     assert.equal(login.headers.get('access-control-allow-origin'), '*')
     const body = await login.json()
-    assert.equal(body.spaceKey, 'zdy')
+    assert.equal(body.spaceKey, 'sample-space')
     const { token } = body
 
     const preflight = await fetch(`${baseUrl}/api/sync`, {
@@ -225,7 +225,7 @@ test('different space keys keep isolated data', async () => {
     const loginA = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'zdy' })
+      body: JSON.stringify({ key: 'sample-space' })
     })
     const loginB = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
@@ -239,7 +239,7 @@ test('different space keys keep isolated data', async () => {
     await fetch(`${baseUrl}/api/sync`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${tokenA}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ideas: [idea({ id: 'idea-zdy', text: 'zdy note' })], tombstones: [] })
+      body: JSON.stringify({ ideas: [idea({ id: 'idea-sample-space', text: 'sample-space note' })], tombstones: [] })
     })
     await fetch(`${baseUrl}/api/sync`, {
       method: 'POST',
@@ -250,7 +250,7 @@ test('different space keys keep isolated data', async () => {
     const remoteA = await (await fetch(`${baseUrl}/api/sync`, { headers: { Authorization: `Bearer ${tokenA}` } })).json()
     const remoteB = await (await fetch(`${baseUrl}/api/sync`, { headers: { Authorization: `Bearer ${tokenB}` } })).json()
     assert.equal(remoteA.ideas.length, 1)
-    assert.equal(remoteA.ideas[0].id, 'idea-zdy')
+    assert.equal(remoteA.ideas[0].id, 'idea-sample-space')
     assert.equal(remoteB.ideas.length, 1)
     assert.equal(remoteB.ideas[0].id, 'idea-other')
   } finally {
@@ -259,7 +259,7 @@ test('different space keys keep isolated data', async () => {
   }
 })
 
-test('legacy store.json is copied into the zdy space', async () => {
+test('legacy store.json is copied into the sample-space space', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'glimmer-migrate-'))
   try {
     await writeFile(path.join(directory, 'store.json'), JSON.stringify({
@@ -269,9 +269,9 @@ test('legacy store.json is copied into the zdy space', async () => {
       tags: [],
       tombstones: []
     }))
-    const result = await migrateLegacyStore(directory, 'zdy')
+    const result = await migrateLegacyStore(directory, 'sample-space')
     assert.equal(result.migrated, true)
-    const again = await migrateLegacyStore(directory, 'zdy')
+    const again = await migrateLegacyStore(directory, 'sample-space')
     assert.equal(again.migrated, false)
 
     const server = await createApiServer({
@@ -284,7 +284,7 @@ test('legacy store.json is copied into the zdy space', async () => {
       const login = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'zdy' })
+        body: JSON.stringify({ key: 'sample-space' })
       })
       const { token } = await login.json()
       const remote = await (await fetch(`${baseUrl}/api/sync`, { headers: { Authorization: `Bearer ${token}` } })).json()
